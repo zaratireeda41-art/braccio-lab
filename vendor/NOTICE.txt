@@ -1,0 +1,4 @@
+Three.js r187 (MIT) - https://threejs.org - see LICENSE-three.txt
+three.module.min.js: build ufficiale minificato (copiato da mie-cose-live).
+three-addons.min.js: OrbitControls, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, OutputPass
+  da examples/jsm r187, raggruppati con esbuild; import adattato a ./three.module.min.js.
