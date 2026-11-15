@@ -258,7 +258,8 @@
     { id: "study", t: "Studioso", d: "Hai letto tutti i passi della guida." },
     { id: "shop10", t: "Magazziniere", d: "Hai preso 10 articoli dalla Dispensa." },
     { id: "bench", t: "Banco completo", d: "Progetto valido con tutti gli attrezzi per montarlo." },
-    { id: "plc", t: "Automazione industriale", d: "Missione superata con un PLC." }
+    { id: "plc", t: "Automazione industriale", d: "Missione superata con un PLC." },
+    { id: "o3d", t: "Operatore di cella", d: "Una sfida dell'Officina 3D con almeno due stelle." }
   ];
   function award(id) { if (S.badges[id]) return false; S.badges[id] = Date.now(); var b = BADGES.filter(function (x) { return x.id === id; })[0]; toast("Nuovo badge: " + b.t); save(); return true; }
   function verify() {
@@ -545,9 +546,34 @@
     S.view = view; save();
     $$(".view").forEach(function (s) { s.hidden = s.id !== "v-" + view; });
     $$("#tabbar button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === view); });
-    if (view === "build") renderBuild(); else if (view === "check") renderCheck(); else if (view === "shop") renderShop(); else if (view === "guide") renderGuide(); else if (view === "cpp") renderCpp(); else renderProfile();
+    if (view !== "3d" && O3.inst) O3.inst.pause();
+    document.body.classList.toggle("in3d", view === "3d");
+    if (view === "build") renderBuild(); else if (view === "check") renderCheck(); else if (view === "shop") renderShop(); else if (view === "guide") renderGuide(); else if (view === "cpp") renderCpp(); else if (view === "3d") open3d(); else renderProfile();
     analyze(); renderStatus();
     window.scrollTo(0, 0);
+  }
+  /* ---------- Officina 3D (modulo caricato solo quando apri la scheda) ---------- */
+  var O3 = { inst: null, loading: false };
+  function webgl() { try { var c = document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl"))); } catch (e) { return false; } }
+  function o3fail(t) { $("#v-3d").innerHTML = '<div class="card"><h2>Officina 3D</h2><p>' + esc(t) + "</p></div>"; }
+  function open3d() {
+    if (O3.inst) { O3.inst.refresh(); return; }
+    if (O3.loading) return;
+    if (!webgl()) { o3fail("Questo browser o dispositivo non ha WebGL attivo: l'Officina 3D non può partire. Prova con Chrome, Safari o Firefox aggiornati e con l'accelerazione hardware attiva."); return; }
+    O3.loading = true; $("#v-3d").innerHTML = '<div class="o3-load"><div class="spin"></div><p>Preparo l\'officina 3D…</p></div>';
+    import(new URL("js3d/officina.js?v=3", document.baseURI).href).then(function (mod) {
+      O3.loading = false;
+      S.o3 = S.o3 || {}; S.o3best = S.o3best || {};
+      O3.inst = mod.mount($("#v-3d"), {
+        SIM: window.SIM, ENG: ENG, CAT: CAT, esc: esc, testMode: !!window.__O3TEST,
+        store: function () { return S.o3; }, save: save, build: function () { return build(); }, R: function () { return analyze(); }, mission: mission,
+        best: function (id) { return S.o3best[id]; },
+        saveBest: function (id, sc) { var b = S.o3best[id]; if (!b || sc.score > b.score) S.o3best[id] = { score: sc.score, stars: sc.stars }; save(); },
+        award: award, toast: toast
+      });
+      window.__o3 = O3.inst;
+      if (S.view !== "3d") O3.inst.pause();
+    }).catch(function (e) { O3.loading = false; o3fail("Non sono riuscito a caricare l'Officina 3D (" + (e && e.message ? e.message : "errore") + "). Ricarica la pagina."); if (window.console) console.warn(e); });
   }
   function openMissions() {
     var sh = $("#sheet");
