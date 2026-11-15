@@ -10,15 +10,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Braccio Lab · XENTRIQ INDUSTRY</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/style.css">
-<script src="js/catalog.js" defer></script>
-<script src="js/engine.js" defer></script>
-<script src="js/missions.js" defer></script>
-<script src="js/lessons.js" defer></script>
-<script src="js/guide.js" defer></script>
-<script src="js/cppgen.js" defer></script>
-<script src="js/viz.js" defer></script>
-<script src="js/app.js" defer></script>
+<link rel="stylesheet" href="css/style.css?v=2">
+<script src="js/catalog.js?v=2" defer></script>
+<script src="js/pantry.js?v=2" defer></script>
+<script src="js/assembly.js?v=2" defer></script>
+<script src="js/engine.js?v=2" defer></script>
+<script src="js/missions.js?v=2" defer></script>
+<script src="js/lessons.js?v=2" defer></script>
+<script src="js/guide.js?v=2" defer></script>
+<script src="js/cppgen.js?v=2" defer></script>
+<script src="js/viz.js?v=2" defer></script>
+<script src="js/icons.js?v=2" defer></script>
+<script src="js/app.js?v=2" defer></script>
 </head>
 <body>
 <header class="top">
@@ -29,6 +32,7 @@
 <main id="main">
   <section class="view" id="v-build"></section>
   <section class="view" id="v-check" hidden></section>
+  <section class="view" id="v-shop" hidden></section>
   <section class="view" id="v-guide" hidden></section>
   <section class="view" id="v-cpp" hidden></section>
   <section class="view" id="v-profile" hidden></section>
@@ -36,6 +40,7 @@
 <nav class="tabbar" id="tabbar">
   <button type="button" data-v="build" class="on"><span class="ic ic-build"></span>Costruisci</button>
   <button type="button" data-v="check"><span class="ic ic-check"></span>Verifica</button>
+  <button type="button" data-v="shop"><span class="ic ic-shop"></span>Dispensa</button>
   <button type="button" data-v="guide"><span class="ic ic-guide"></span>Guida</button>
   <button type="button" data-v="cpp"><span class="ic ic-cpp"></span>C++</button>
   <button type="button" data-v="profile"><span class="ic ic-prof"></span>Profilo</button>
