@@ -6,11 +6,11 @@
     var o = { motor: motor, reducer: reducer, ratio: ratio, support: support, brake: brake, driver: driver, encoder: encoder, link: link, shaftMat: "c45", a: 60, b: 100 };
     if (x) for (var k in x) o[k] = x[k]; return o;
   }
-  function el(o) { var d = { mcu: "uno", bus: "stepdir", micro: 16, psu: "none", servoPsu: "none", wireMotor: "w05", wirePower: "w1", fuse: 0, estop: "none", homing: "none", levelShift: false, aux24: false, torqueLimit: false }; for (var k in o) d[k] = o[k]; return d; }
+  function el(o) { var d = { mcu: "uno", bus: "stepdir", micro: 16, psu: "none", servoPsu: "none", wireMotor: "w05", wirePower: "w1", fuse: 0, estop: "none", homing: "none", levelShift: false, aux24: false, torqueLimit: false, cable: "" }; for (var k in o) d[k] = o[k]; return d; }
   var MISSIONS = [
     { id: "m1", level: 1, title: "1 · Braccio da scrivania", short: "Solleva 0,5 kg con i servo",
       story: "Il primo braccio: servo hobby, pezzi stampati in 3D e un Arduino. Deve sollevare 0,5 kg a 25 cm dalla spalla.",
-      axes: 4, minAxes: 4, payload: 0.5, reach: 0.25, speed: 90, tAcc: 0.3, F: 0, lat: false, tol: 5, budget: 260, massRef: 1.2, estop: 1, brakes: false,
+      axes: 4, minAxes: 4, payload: 0.5, reach: 0.25, speed: 90, tAcc: 0.3, F: 0, lat: false, tol: 5, budget: 280, massRef: 1.2, estop: 1, brakes: false,
       tips: ["La coppia scritta sui servo è di stallo: usa al massimo la metà.", "Metti un cuscinetto 608 sul lato opposto del servo della spalla.", "I servo non si alimentano dall'USB."],
       starter: { axes: 4, effector: "micro", joints: [
         jt("mg996r", "none", 1, "servo", "none", "pwm", "pot", lk("pla", "rect", { B: 30, H: 30 }, 0.08), { b: 20 }),
@@ -20,13 +20,13 @@
       ], elec: el({ mcu: "uno", bus: "stepdir", servoPsu: "usb5", estop: "none" }) },
       solution: { axes: 4, effector: "micro", joints: [
         jt("ds3218", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 40, H: 40 }, 0.08), { b: 20 }),
-        jt("ds5160", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 24, H: 16 }, 0.11), { b: 20 }),
-        jt("ds5160", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 24, H: 14 }, 0.08), { b: 20 }),
+        jt("ds5160", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 24, H: 20 }, 0.11), { b: 20 }),
+        jt("ds5160", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 24, H: 18 }, 0.08), { b: 20 }),
         jt("mg996r", "none", 1, "servo608", "none", "pca9685", "pot", lk("pla", "rect", { B: 20, H: 10 }, 0.0), { b: 20 })
       ], elec: el({ mcu: "uno", bus: "stepdir", servoPsu: "s6b", estop: "soft" }) } },
     { id: "m2", level: 2, title: "2 · Braccio da laboratorio", short: "5 kg con gli stepper",
       story: "Un braccio a 5 assi con stepper, riduttori e alluminio: deve portare 5 kg a 60 cm con 1 mm di precisione. Qui entrano in gioco freni, emergenza e cablaggio.",
-      axes: 5, minAxes: 5, payload: 5, reach: 0.6, speed: 45, tAcc: 0.5, F: 0, lat: false, tol: 1.0, budget: 3200, massRef: 35, estop: 2, brakes: true,
+      axes: 5, minAxes: 5, payload: 5, reach: 0.6, speed: 45, tAcc: 0.5, F: 0, lat: false, tol: 1.0, budget: 3600, massRef: 35, estop: 2, brakes: true,
       tips: ["Gli stepper perdono coppia in velocità: a 48 V va meglio.", "Gli assi che portano peso vogliono un freno.", "Arduino Uno non basta per 5 stepper con encoder."],
       starter: { axes: 5, effector: "grip", joints: [
         jt("n17b", "ple40", 10, "red", "none", "a4988", "none", lk("al6061", "tube", { D: 80, t: 4 }, 0.25)),
@@ -44,7 +44,7 @@
  elec: el({mcu:"stm32",psu:"p48b",micro:8,wireMotor:"w075",wirePower:"w4",fuse:25,estop:"cont",homing:"ind",levelShift:true,aux24:true,torqueLimit:true})} },
     { id: "m3", level: 3, title: "3 · Il J2 di Reeda", short: "Fresatura 300 N",
       story: "Il tuo braccio vero: 6 assi, elettromandrino da 8 kg, utensile da 1 kg a 750 mm dalla spalla, forza di fresatura 300 N anche laterale. È lo stesso caso dei tuoi calcoli J2 (M statico 94,18 N·m a parità di masse).",
-      axes: 6, minAxes: 6, payload: 1, reach: 0.75, speed: 30, tAcc: 0.5, F: 300, lat: true, tol: 1.0, budget: 14000, massRef: 90, estop: 2, brakes: true, effector: "sp35",
+      axes: 6, minAxes: 6, payload: 1, reach: 0.75, speed: 30, tAcc: 0.5, F: 300, lat: true, tol: 1.0, budget: 15500, massRef: 90, estop: 2, brakes: true, effector: "sp35",
       tips: ["Il riduttore domina la precisione: il cicloidale SHPR-40E-121 è rigido (108 N·m/arcmin) ed economico.", "Imposta il limite di coppia nel drive.", "Un encoder assoluto sull'uscita compensa torsione e gioco."],
       starter: { axes: 6, effector: "sp35", joints: [
         jt("ac750", "pp120", 50, "red", "none", "b3a", "delta17", lk("s235", "tube", { D: 160, t: 5 }, 0.45)),
@@ -64,7 +64,7 @@
  elec: el({mcu:"stm32",psu:"p24b",micro:8,wireMotor:"w1",wirePower:"w15",fuse:15,estop:"cont",homing:"none",levelShift:true,torqueLimit:true})} },
     { id: "m4", level: 4, title: "4 · Robot industriale", short: "20 kg a 1,2 m",
       story: "Un robot da produzione a 6 assi: 20 kg a 1,2 m, 60 °/s, 1 mm sotto carico. Servo AC, cicloidali, EtherCAT e sicurezza di categoria 3.",
-      axes: 6, minAxes: 6, payload: 20, reach: 1.2, speed: 60, tAcc: 0.5, F: 0, lat: false, tol: 1.0, budget: 22000, massRef: 250, estop: 3, brakes: true, effector: "hgrip",
+      axes: 6, minAxes: 6, payload: 20, reach: 1.2, speed: 60, tAcc: 0.5, F: 0, lat: false, tol: 1.0, budget: 25000, massRef: 250, estop: 3, brakes: true, effector: "hgrip",
       tips: ["Le coppie dinamiche qui pesano quanto la gravità.", "EtherCAT vuole un PC industriale come master.", "Il polso pesa: tienilo leggero."],
       starter: { axes: 6, effector: "hgrip", joints: [
         jt("n34b", "ple80", 50, "red", "none", "dm860", "none", lk("s235", "tube", { D: 200, t: 6 }, 0.6)),
@@ -87,7 +87,26 @@
       axes: 6, minAxes: 4, payload: 2, reach: 0.6, speed: 60, tAcc: 0.5, F: 0, lat: false, tol: 1, budget: 10000, massRef: 40, estop: 2, brakes: true, editable: true, tips: [], starter: null, solution: null }
   ];
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // Dispensa: viti delle flange, dita, cavi e componenti extra delle soluzioni (+ attrezzi consigliati)
+  function setup(id, o) {
+    var m = byId(id), s = m.solution;
+    if (o.effector) s.effector = o.effector;
+    s.fingers = o.fingers || "rubber"; s.shop = o.shop || {}; s.elec.cable = o.cable || "";
+    (o.bolts || []).forEach(function (b, k) { if (b) s.joints[k].bolt = { s: b[0], c: b[1], n: b[2], pcd: b[3] }; });
+    m.tools = o.tools || [];
+  }
   function byId(id) { for (var i = 0; i < MISSIONS.length; i++) if (MISSIONS[i].id === id) return MISSIONS[i]; return MISSIONS[0]; }
+  setup("m1", { effector: "mgrip", fingers: "form", shop: { heatset_m3: 1 }, cable: "servo22",
+    tools: ["t_screw", "t_prec", "t_hex", "t_multi", "t_cal", "t_solder", "t_crimpd", "t_benchpsu"] });
+  setup("m2", { fingers: "form", cable: "cf27_15", shop: { wrap16: 1, helicoil: 1, gland_m20: 1 },
+    bolts: [["M5", "8.8", 8, 70], ["M8", "10.9", 12, 120], ["M6", "10.9", 8, 80], ["M5", "8.8", 6, 50], ["M4", "8.8", 4, 40]],
+    tools: ["t_screw", "t_hex", "t_tq1", "t_tq2", "t_bits", "t_multi", "t_cal", "t_crimp", "t_solder", "t_dial", "t_drillp", "t_tap", "t_strip", "t_saw", "t_deburr", "t_benchpsu"] });
+  setup("m3", { cable: "cf27_15", shop: { e_vfd: 1, e_pump: 1, trc60: 2, helicoil: 1, e_cabinet: 1, e_mcb: 1, e_rcd: 1, dowel_8: 12 },
+    bolts: [["M10", "10.9", 12, 180], ["M10", "12.9", 12, 180], ["M8", "12.9", 12, 130], ["M6", "12.9", 12, 100], ["M6", "12.9", 12, 100], ["M5", "12.9", 8, 60]],
+    tools: ["t_screw", "t_vde", "t_hex", "t_tq1", "t_tq2", "t_bits", "t_multi", "t_cal", "t_crimp", "t_solder", "t_dial", "t_drillp", "t_tap", "t_hoist", "t_strip", "t_scope", "t_saw", "t_deburr", "t_benchpsu"] });
+  setup("m4", { cable: "cf27_25", fingers: "rubber", shop: { p_comp50: 1, p_frl: 1, p_v52b: 1, hose6: 1, p_fit: 1, p_sil: 1, s_reed: 1, ek1100: 1, el1008: 1, el2008: 1, trc85: 3, helicoil: 1, e_cabinet: 1, e_mcb: 1, e_rcd: 1, anchor_m12: 1, dowel_8: 12 },
+    bolts: [["M16", "10.9", 12, 260], ["M16", "10.9", 12, 260], ["M10", "12.9", 12, 160], ["M6", "12.9", 12, 100], ["M6", "12.9", 12, 100], ["M5", "12.9", 8, 60]],
+    tools: ["t_screw", "t_vde", "t_hex", "t_hexL", "t_tq1", "t_tq2", "t_tq4", "t_bits", "t_multi", "t_cal", "t_crimp", "t_dial", "t_drillp", "t_tap", "t_hoist", "t_strip", "t_scope", "t_saw", "t_deburr", "t_benchpsu"] });
   var api = { MISSIONS: MISSIONS, byId: byId, clone: clone, jt: jt, lk: lk, el: el };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.MIS = api;
 })(this);

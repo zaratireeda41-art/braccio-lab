@@ -364,7 +364,86 @@ void loop() {
   // ... qui muovi gli assi verso obiettivo[] (lezioni 3 e 6)
 }
 ` });
+  L.push({ id: "plc", title: "11 · PLC o microcontrollore? Ladder e Structured Text", tag: "PLC", lang: "st",
+    text: "<p>Un <b>microcontrollore</b> (Arduino, ESP32, STM32) è una scheda a 3,3–5 V che programmi in C++: costa poco, è velocissimo e fa tutto quello che scrivi, ma ingressi e uscite sono delicati e la sicurezza è tutta sulle tue spalle. Un <b>PLC</b> (Siemens S7-1200, Allen-Bradley Micro800, Omron, Beckhoff) è un computer industriale a <b>24 V</b>: ingressi optoisolati che reggono i disturbi, uscite che accendono valvole e relè, ciclo di scansione deterministico, diagnostica, e si programma con i linguaggi della norma <b>IEC 61131-3</b>.</p>" +
+      "<table class=\"cmp\"><tr><th></th><th>Microcontrollore</th><th>PLC</th></tr><tr><td>Tensione I/O</td><td>3,3–5 V</td><td>24 V</td></tr><tr><td>Linguaggio</td><td>C/C++</td><td>Ladder (LD), Structured Text (ST), FBD, SFC</td></tr><tr><td>Assi</td><td>step/dir via software</td><td>uscite PTO (S7-1200: 4 × 100 kHz) o drive su bus (PROFINET, EtherCAT)</td></tr><tr><td>Ciclo</td><td>loop() libero</td><td>scansione: leggi ingressi → esegui → scrivi uscite (1–10 ms)</td></tr><tr><td>Costo tipico</td><td>10–40 €</td><td>120–1100 € + software</td></tr></table>" +
+      "<p><b>Ladder</b> (a contatti) disegna la logica come un circuito a relè: a sinistra la barra +24 V, a destra lo 0 V. Ogni riga (<i>rung</i>) accende una bobina. Con una valvola 5/2 <b>bistabile</b> basta un impulso per bobina; se l\'emergenza toglie il consenso nessuna bobina si eccita e la pinza resta com\'è: il pezzo non cade.</p>" +
+      "<pre class=\"ladder\">     iEmergenzaOK   iChiudi                     qBobinaChiudi\n|──────┤ ├──────────┤ ├───────────────────────────( )──────|\n\n     iEmergenzaOK   iChiudi                     qBobinaApri\n|──────┤ ├──────────┤/├───────────────────────────( )──────|\n\n     iPinzaChiusa   qBobinaChiudi   tTimeout.Q qAllarme\n|──────┤/├──────────┤ ├──────────────┤ ├──────────(S)──────|\n\n ┤ ├ contatto aperto (TRUE se l\'ingresso è acceso)   ┤/├ contatto chiuso (negato)\n ( ) bobina   (S) bobina che resta accesa finché non la resetti</pre>" +
+      "<p>Lo stesso in <b>Structured Text</b>, il linguaggio testuale della IEC 61131-3 (simile al Pascal): con una macchina a stati e i blocchi standard <code>TON</code> (timer) e <code>R_TRIG</code> (fronte). <b>Attenzione</b>: anche qui il software non sostituisce il relè di sicurezza. L'emergenza vera taglia la potenza in hardware (contattore o STO); il programma la legge solo per fermarsi in modo ordinato e non ripartire da solo.</p>" +
+      "<p>Nel gioco: scegli un PLC in <b>Elettronica</b> (o dalla Dispensa) e la verifica conta ingressi, uscite, uscite impulsi e contatori; nella sezione C++ lo sketch diventa un programma ST.</p>",
+    code: `(* Pinza pneumatica con valvola 5/2 bistabile ed emergenza - IEC 61131-3 ST *)
+PROGRAM Pinza
+VAR
+  iEmergenzaOK  AT %I0.0 : BOOL;  (* contatto del relè di sicurezza: TRUE = tutto ok *)
+  iReset        AT %I0.1 : BOOL;  (* pulsante di reset *)
+  iChiudi       AT %I0.2 : BOOL;  (* comando dal programma del robot *)
+  iPinzaChiusa  AT %I0.3 : BOOL;  (* sensore magnetico sulla pinza *)
+  iPinzaAperta  AT %I0.4 : BOOL;
+  qBobinaChiudi AT %Q0.0 : BOOL;  (* bobina 14 della valvola *)
+  qBobinaApri   AT %Q0.1 : BOOL;  (* bobina 12 della valvola *)
+  qAllarme      AT %Q0.2 : BOOL;
+  Stato : INT := 0;              (* 0 attesa reset, 10 aperta, 20 chiusura, 30 chiusa, 40 apertura, 99 allarme *)
+  tTimeout : TON;
+  fReset : R_TRIG;
+END_VAR
+
+fReset(CLK := iReset);
+
+(* L'emergenza ha la precedenza: la valvola bistabile resta dov'è, il pezzo non cade *)
+IF NOT iEmergenzaOK THEN
+  qBobinaChiudi := FALSE;
+  qBobinaApri := FALSE;
+  IF Stato <> 0 THEN
+    Stato := 99;
+  END_IF;
+END_IF;
+
+CASE Stato OF
+  0:  (* dopo l'accensione serve sempre un reset *)
+    IF iEmergenzaOK AND fReset.Q THEN
+      Stato := 10;
+    END_IF;
+  10: (* aperta, in attesa *)
+    IF iChiudi THEN
+      Stato := 20;
+    END_IF;
+  20: (* chiusura con controllo del tempo *)
+    qBobinaApri := FALSE;
+    qBobinaChiudi := TRUE;
+    IF iPinzaChiusa THEN
+      qBobinaChiudi := FALSE;
+      Stato := 30;
+    ELSIF tTimeout.Q THEN
+      Stato := 99;   (* pezzo assente o aria mancante *)
+    END_IF;
+  30: (* chiusa *)
+    IF NOT iChiudi THEN
+      Stato := 40;
+    END_IF;
+  40: (* apertura *)
+    qBobinaChiudi := FALSE;
+    qBobinaApri := TRUE;
+    IF iPinzaAperta THEN
+      qBobinaApri := FALSE;
+      Stato := 10;
+    ELSIF tTimeout.Q THEN
+      Stato := 99;
+    END_IF;
+  99: (* allarme: si esce solo con emergenza ok e reset *)
+    qBobinaChiudi := FALSE;
+    qBobinaApri := FALSE;
+    IF iEmergenzaOK AND fReset.Q THEN
+      Stato := 10;
+    END_IF;
+END_CASE;
+
+tTimeout(IN := (Stato = 20) OR (Stato = 40), PT := T#2S);
+qAllarme := (Stato = 99);
+END_PROGRAM
+` });
   var QUIZ = [
+    { q: "Un PLC Siemens S7-1200 1214C DC/DC/DC ha 4 uscite impulsi. Vuoi comandare 5 assi step/dir. Che fai?", a: ["Uso le uscite a relè per il quinto", "Aggiungo drive su bus o un PLC con più assi", "Divido gli impulsi in software"], ok: 1, why: "Ogni asse step/dir vuole un'uscita PTO veloce. I relè scattano poche volte al secondo: per più assi si passa a drive su bus (PROFINET/EtherCAT)." },
+    { q: "Pinza pneumatica da 4900 N, dita lisce (μ 0,1), pezzo da 20 kg che accelera a 2,8 m/s². Basta?", a: ["Sì, 4900 N sono tantissimi", "No: servono circa 5060 N, servono dita in gomma o sagomate", "Dipende solo dalla pressione"], ok: 1, why: "F = m·(g+a)·2/μ = 20 × 12,6 × 2 / 0,1 ≈ 5060 N. Con dita in gomma (μ 0,3) bastano circa 1690 N." },
     { q: "Un servo MG996R dichiara 11 kg·cm. Quanta coppia puoi usare in modo continuo?", a: ["1,08 N·m", "Circa 0,5 N·m", "11 N·m"], ok: 1, why: "11 kg·cm ≈ 1,08 N·m è la coppia di stallo: in uso continuo conviene restare intorno alla metà." },
     { q: "Perché un giunto che porta peso (spalla) vuole un freno a molla?", a: ["Per frenare più in fretta", "Perché se manca corrente il braccio non deve cadere", "Per ridurre il consumo"], ok: 1, why: "Il freno a molla si chiude da solo senza corrente: tiene il braccio quando spegni o in emergenza." },
     { q: "La coppia statica di un link lungo L con massa m, incernierato a un estremo, è:", a: ["m·g·L", "m·g·L/2", "m·L²/12"], ok: 1, why: "Il peso agisce nel baricentro, a metà del link: M = m·g·L/2. m·L²/12 è un momento d'inerzia." },

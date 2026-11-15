@@ -4,6 +4,7 @@
 (function (root) {
   "use strict";
   var CAT = (typeof module !== "undefined" && module.exports) ? require("./catalog.js") : root.CAT;
+  var ASM = (typeof module !== "undefined" && module.exports) ? require("./assembly.js") : root.ASM;
   var g = 9.81, AM = Math.PI / 180 / 60, SF_DEF = 2.5, ECC = 0.03;
   var KINDS = { 4: ["yaw", "pitch", "pitch", "pitch"], 5: ["yaw", "pitch", "pitch", "pitch", "roll"], 6: ["yaw", "pitch", "pitch", "roll", "pitch", "roll"] };
   var KIND_IT = { yaw: "rotazione base (asse verticale)", pitch: "beccheggio (asse orizzontale, porta il peso)", roll: "rotolamento (asse lungo il braccio)" };
@@ -70,7 +71,7 @@
   }
   function wireFor(A) { for (var k = 0; k < CAT.WIRES.length; k++) if (CAT.WIRES[k].A >= A) return CAT.WIRES[k]; return CAT.WIRES[CAT.WIRES.length - 1]; }
 
-  function analyze(build, mission) {
+  function analyze(build, mission, opt) {
     mission = mission || {};
     var SF = mission.SF || SF_DEF;
     var n = build.axes, kinds = KINDS[n], issues = [], J = [];
@@ -78,6 +79,7 @@
     var omega = omegaDeg * Math.PI / 180, alpha = omega / tAcc;
     var E = build.elec, mcu = CAT.byId(CAT.MCUS, E.mcu), psu = CAT.byId(CAT.PSUS, E.psu), spsu = CAT.byId(CAT.SERVO_PSUS, E.servoPsu);
     var eff = CAT.byId(CAT.EFFECTORS, build.effector);
+    if (ASM) eff = ASM.effWithFlange(eff, build);
     var payload = mission.payload || 0;
     function add(sev, cat, joint, title, why, fix, calc) { issues.push({ sev: sev, cat: cat, joint: joint, title: title, why: why, fix: fix || "", calc: calc || "" }); }
 
@@ -450,6 +452,8 @@
     var elecCalc = { pinsUsed: pinsUsed, pinsAvail: pinsAvail, stepRate: stepRate, abCount: abCount };
     if (mcu.id === "ipc") {
       J.forEach(function (o) { if (o.iface !== "ethercat" && o.iface !== "can") add("err", "elettronica", o.name, o.name + ": il PC industriale non ha uscite " + (o.iface === "stepdir" ? "step/dir" : o.iface), "Con un PC industriale tutti i drive devono essere su bus (EtherCAT o CAN).", "Usa drive EtherCAT (Delta ASDA-B3-E) o aggiungi un modulo I/O EtherCAT."); });
+    } else if (mcu.plc) {
+      /* PLC: ingressi/uscite, impulsi e contatori controllati in assembly.js */
     } else {
       if (pinsUsed > pinsAvail) add("err", "elettronica", "MCU", "Pin insufficienti sul microcontrollore", "Servono circa " + pinsUsed + " pin (step/dir, encoder, finecorsa, freni, emergenza" + (pinNotes.length ? ", " + pinNotes.join(", ") : "") + "), " + mcu.name + " ne ha " + pinsAvail + ".", "Passa a una scheda con più pin (Mega, STM32, Teensy) o usa drive su bus CAN.");
       var cap = mcu.hwEnc + Math.floor(mcu.intPins / 2);
@@ -491,7 +495,9 @@
       }
     }
     // cavi e fusibile
-    var wm = CAT.byId(CAT.WIRES, E.wireMotor), wp = CAT.byId(CAT.WIRES, E.wirePower), fuse = +E.fuse || 0;
+    var wm = CAT.byId(CAT.WIRES, E.wireMotor), cblM = E.cable ? CAT.byId(CAT.CABLES, E.cable) : null;
+    if (cblM && cblM.mm2) { for (var wi = 0; wi < CAT.WIRES.length; wi++) if (CAT.WIRES[wi].mm2 >= cblM.mm2 - 1e-9) { wm = CAT.WIRES[wi]; break; } }
+    var wp = CAT.byId(CAT.WIRES, E.wirePower), fuse = +E.fuse || 0;
     power.wire = { motor: wm, power: wp, fuse: fuse, Imax: maxImotor };
     if (maxImotor > wm.A) add("err", "cavi", "Cablaggio", "Cavi motore troppo sottili", "Il motore più assetato assorbe " + fmt(maxImotor, 1) + " A, il cavo da " + wm.mm2 + " mm² (AWG " + wm.awg + ") ne porta " + wm.A + " in fascio.", "Usa almeno " + wireFor(maxImotor).mm2 + " mm².");
     if (psu.V) {
@@ -513,7 +519,8 @@
     if (needHome && E.homing === "none") add((mission.level || 1) >= 2 ? "err" : "warn", "sicurezza", "Sicurezza", "Manca l'homing", "Con stepper o encoder incrementali all'accensione il controllo non sa dove sono gli assi.", "Finecorsa (meccanici o induttivi) su ogni asse e una routine di azzeramento.");
     if (J.some(function (o) { return o.Enc.id === "delta17"; })) add("info", "sicurezza", "Sicurezza", "Encoder assoluti Delta", "Gli encoder assoluti multigiro Delta tengono la posizione con una batteria nel cavo encoder.", "Controlla la batteria ogni 2–3 anni.");
     // missione
-    var costs = costOf(build, J, eff, mcu, psu, spsu, es);
+    var asm = ASM ? ASM.check({ build: build, mission: mission, J: J, mcu: mcu, psu: psu, eff: eff, add: add, opt: opt, xTip: xTip, reach: reach, omega: omega, alpha: alpha, elec: elecCalc, power: power }) : null;
+    var costs = costOf(build, J, eff, mcu, psu, spsu, es, asm);
     var mass = J.reduce(function (s, o) { return s + o.mJoint + o.mLink; }, 0) + eff.mass;
     if (mission.reach && reach < mission.reach * 0.97) add("err", "missione", "Missione", "Braccio troppo corto", "Arrivi a " + fmt(reach * 1000, 0) + " mm dall'asse della spalla, la missione chiede " + fmt(mission.reach * 1000, 0) + " mm.", "Allunga i link.");
     if (mission.reach && reach > mission.reach * 1.35) add("warn", "missione", "Missione", "Braccio più lungo del necessario", "Ogni centimetro in più aumenta coppie e flessioni.", "Accorcia i link verso " + fmt(mission.reach * 1000, 0) + " mm.");
@@ -531,11 +538,11 @@
     });
     var minMargin = margins.length ? Math.min.apply(null, margins) : 0;
     var score = scoreOf(mission, errs, warns, costs.total, mass, minMargin, defl.err);
-    return { J: J, issues: issues, errs: errs, warns: warns, reach: reach, height: height, xTip: xTip, xEnd: xEnd, xEff: xEff, eff: eff, defl: defl, power: power, cost: costs, mass: mass, minMargin: minMargin, score: score, elec: elecCalc, mcu: mcu, psu: psu, mission: mission };
+    return { J: J, issues: issues, errs: errs, warns: warns, reach: reach, height: height, xTip: xTip, xEnd: xEnd, xEff: xEff, eff: eff, defl: defl, power: power, cost: costs, mass: mass, minMargin: minMargin, score: score, elec: elecCalc, mcu: mcu, psu: psu, mission: mission, asm: asm };
   }
   function pickFuse(I, max) { for (var k = 0; k < CAT.FUSES.length; k++) if (CAT.FUSES[k] >= I) return Math.min(CAT.FUSES[k], max || 999); return 40; }
   function typeLabel(t) { return { servo_hobby: "servo hobby", stepper: "stepper", stepper_cl: "stepper closed-loop", dc: "DC a spazzole", bldc: "BLDC", ac: "servo AC" }[t] || t; }
-  function costOf(build, J, eff, mcu, psu, spsu, es) {
+  function costOf(build, J, eff, mcu, psu, spsu, es, asm) {
     var c = { motori: 0, riduttori: 0, cuscinetti: 0, freni: 0, driver: 0, encoder: 0, struttura: 0, elettronica: 0, utensile: eff.price };
     var pca = 0;
     J.forEach(function (o) {
@@ -547,6 +554,7 @@
     c.driver += Math.ceil(pca / 16) * 6;
     var wires = build.axes * 2 * 1.5;
     c.elettronica = mcu.price + psu.price + spsu.price + es.price + CAT.byId(CAT.HOMING, build.elec.homing).price * build.axes + wires + (build.elec.fuse ? 6 : 0) + (build.elec.aux24 ? 30 : 0) + (build.elec.levelShift ? 5 : 0) + 25;
+    if (asm) c.dispensa = Math.round(asm.cost);
     c.total = 0; for (var k in c) if (k !== "total") c.total += c[k];
     return c;
   }

@@ -16,6 +16,7 @@
   function generate(build, r, mission) {
     var mcu = r.mcu, E = build.elec;
     if (mcu.id === "ipc") return genPC(build, r, mission);
+    if (mcu.plc) return genST(build, r, mission);
     var pins = PINS[mcu.id] || PINS.mega, io = pins.io.slice(), intr = pins.intr.slice();
     function take() { return io.length ? io.shift() : 99; }
     function takeInt() { if (intr.length) return intr.shift(); return take(); }
@@ -272,6 +273,102 @@
     L.push("  std::printf(\"Movimento completato in %.3f s\\n\", Tmax);");
     L.push("  return 0;");
     L.push("}");
+    return L.join("\n") + "\n";
+  }
+  function genST(build, r, mission) {
+    var L = [], n = build.axes, E = build.elec, eff = r.eff, kind = eff.kind || "servo";
+    var di = 0, dq = 0;
+    function I() { var a = "%I" + Math.floor(di / 8) + "." + (di % 8); di++; return a; }
+    function Q() { var a = "%Q" + Math.floor(dq / 8) + "." + (dq % 8); dq++; return a; }
+    var homing = E.homing !== "none";
+    L.push("(* XENTRIQ INDUSTRY · Braccio Lab — programma IEC 61131-3 Structured Text *)");
+    L.push("(* Missione: " + mission.title + " · " + n + " assi · controllore: " + r.mcu.name + " *)");
+    L.push("(* Gli assi usano i blocchi PLCopen Motion (MC_Power, MC_Home, MC_MoveAbsolute, MC_Stop).");
+    L.push("   AXIS_REF va sostituito con l'oggetto asse del tuo ambiente (TIA Portal: TO_PositioningAxis, Sysmac: _sAXIS_REF, TwinCAT: AXIS_REF).");
+    L.push("   Gli indirizzi %I/%Q sono un esempio: allineali alla configurazione hardware. *)");
+    L.push("PROGRAM Braccio");
+    L.push("VAR");
+    L.push("  iEmergenzaOK AT " + I() + " : BOOL;   (* contatto del relè di sicurezza *)");
+    L.push("  iReset       AT " + I() + " : BOOL;");
+    if (homing) for (var k = 0; k < n; k++) L.push("  iHome_J" + (k + 1) + "     AT " + I() + " : BOOL;");
+    if (kind === "pneu" || kind === "elec") { L.push("  iPinzaChiusa AT " + I() + " : BOOL;"); L.push("  iPinzaAperta AT " + I() + " : BOOL;"); }
+    if (kind === "vac") L.push("  iVuotoOK     AT " + I() + " : BOOL;   (* vacuostato *)");
+    if (kind === "pneu" || kind === "elec") { L.push("  qPinzaChiudi AT " + Q() + " : BOOL;"); L.push("  qPinzaApri   AT " + Q() + " : BOOL;"); }
+    if (kind === "vac") L.push("  qVuoto       AT " + Q() + " : BOOL;");
+    if (kind === "spindle") L.push("  qMandrino    AT " + Q() + " : BOOL;   (* marcia inverter *)");
+    r.J.forEach(function (o) { if (o.brakeRelay) L.push("  qFreno_" + o.name + "    AT " + Q() + " : BOOL;   (* TRUE = freno sbloccato *)"); });
+    L.push("  qAllarme     AT " + Q() + " : BOOL;");
+    L.push("  Asse     : ARRAY[1.." + n + "] OF AXIS_REF;");
+    L.push("  fbPower  : ARRAY[1.." + n + "] OF MC_Power;");
+    L.push("  fbHome   : ARRAY[1.." + n + "] OF MC_Home;");
+    L.push("  fbMove   : ARRAY[1.." + n + "] OF MC_MoveAbsolute;");
+    L.push("  fbStop   : ARRAY[1.." + n + "] OF MC_Stop;");
+    L.push("  Target   : ARRAY[1.." + n + "] OF LREAL := [" + r.J.map(function (o, k) { return k === 1 ? "30.0" : k === 2 ? "-45.0" : "0.0"; }).join(", ") + "];   (* gradi *)");
+    L.push("  VelMax   : LREAL := " + f(mission.speed || 60, 1) + ";   (* °/s al giunto *)");
+    L.push("  AccMax   : LREAL := " + f((mission.speed || 60) / (mission.tAcc || 0.5), 1) + ";   (* °/s² *)");
+    L.push("  Stato    : INT := 0;   (* 0 reset, 10 abilitazione, 20 homing, 30 pronto, 40 movimento, 99 emergenza *)");
+    L.push("  i        : INT;");
+    L.push("  TuttiOK  : BOOL;");
+    L.push("  fReset   : R_TRIG;");
+    L.push("END_VAR");
+    L.push("");
+    r.J.forEach(function (o) { if (o.torqueLimit) L.push("(* " + o.name + ": imposta nel drive il limite di coppia a " + f(o.torqueLimit, 2) + " N·m lato motore (protegge il riduttore) *)"); });
+    L.push("fReset(CLK := iReset);");
+    L.push("IF NOT iEmergenzaOK THEN");
+    L.push("  Stato := 99;");
+    L.push("END_IF;");
+    L.push("");
+    L.push("CASE Stato OF");
+    L.push("  0:");
+    L.push("    IF iEmergenzaOK AND fReset.Q THEN");
+    L.push("      Stato := 10;");
+    L.push("    END_IF;");
+    L.push("  10: (* abilita gli assi *)");
+    L.push("    TuttiOK := TRUE;");
+    L.push("    FOR i := 1 TO " + n + " DO");
+    L.push("      TuttiOK := TuttiOK AND fbPower[i].Status;");
+    L.push("    END_FOR;");
+    L.push("    IF TuttiOK THEN");
+    L.push("      Stato := " + (homing ? "20" : "30") + ";");
+    L.push("    END_IF;");
+    L.push("  20: (* azzeramento sui finecorsa *)");
+    L.push("    TuttiOK := TRUE;");
+    L.push("    FOR i := 1 TO " + n + " DO");
+    L.push("      TuttiOK := TuttiOK AND fbHome[i].Done;");
+    L.push("    END_FOR;");
+    L.push("    IF TuttiOK THEN");
+    L.push("      Stato := 30;");
+    L.push("    END_IF;");
+    L.push("  30: (* pronto: prendi il pezzo e muoviti *)");
+    if (kind === "pneu" || kind === "elec") { L.push("    qPinzaApri := FALSE;"); L.push("    qPinzaChiudi := TRUE;"); L.push("    IF iPinzaChiusa THEN"); L.push("      qPinzaChiudi := FALSE;"); L.push("      Stato := 40;"); L.push("    END_IF;"); }
+    else if (kind === "vac") { L.push("    qVuoto := TRUE;"); L.push("    IF iVuotoOK THEN"); L.push("      Stato := 40;"); L.push("    END_IF;"); }
+    else if (kind === "spindle") { L.push("    qMandrino := TRUE;"); L.push("    Stato := 40;"); }
+    else L.push("    Stato := 40;");
+    L.push("  40: (* movimento coordinato *)");
+    L.push("    TuttiOK := TRUE;");
+    L.push("    FOR i := 1 TO " + n + " DO");
+    L.push("      TuttiOK := TuttiOK AND fbMove[i].Done;");
+    L.push("    END_FOR;");
+    L.push("    IF TuttiOK THEN");
+    L.push("      Stato := 30;");
+    L.push("    END_IF;");
+    L.push("  99: (* emergenza: fermo ordinato, si riparte solo con reset *)");
+    if (kind === "spindle") L.push("    qMandrino := FALSE;");
+    if (kind === "pneu" || kind === "elec") { L.push("    qPinzaChiudi := FALSE;   (* valvola bistabile: la pinza resta chiusa *)"); L.push("    qPinzaApri := FALSE;"); }
+    L.push("    IF iEmergenzaOK AND fReset.Q THEN");
+    L.push("      Stato := 0;");
+    L.push("    END_IF;");
+    L.push("END_CASE;");
+    L.push("");
+    L.push("FOR i := 1 TO " + n + " DO");
+    L.push("  fbPower[i](Axis := Asse[i], Enable := (Stato >= 10) AND (Stato < 99));");
+    L.push("  fbHome[i](Axis := Asse[i], Execute := (Stato = 20));");
+    L.push("  fbMove[i](Axis := Asse[i], Execute := (Stato = 40), Position := Target[i], Velocity := VelMax, Acceleration := AccMax, Deceleration := AccMax);");
+    L.push("  fbStop[i](Axis := Asse[i], Execute := (Stato = 99), Deceleration := AccMax * 2.0);");
+    L.push("END_FOR;");
+    r.J.forEach(function (o, k) { if (o.brakeRelay) L.push("qFreno_" + o.name + " := fbPower[" + (k + 1) + "].Status;   (* sblocca solo con l'asse in coppia *)"); });
+    L.push("qAllarme := (Stato = 99);");
+    L.push("END_PROGRAM");
     return L.join("\n") + "\n";
   }
   var api = { generate: generate };
