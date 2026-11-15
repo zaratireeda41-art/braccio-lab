@@ -6,22 +6,24 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; manifest-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#0b0e12">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Braccio Lab · XENTRIQ INDUSTRY</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/style.css?v=2">
-<script src="js/catalog.js?v=2" defer></script>
-<script src="js/pantry.js?v=2" defer></script>
-<script src="js/assembly.js?v=2" defer></script>
-<script src="js/engine.js?v=2" defer></script>
-<script src="js/missions.js?v=2" defer></script>
-<script src="js/lessons.js?v=2" defer></script>
-<script src="js/guide.js?v=2" defer></script>
-<script src="js/cppgen.js?v=2" defer></script>
-<script src="js/viz.js?v=2" defer></script>
-<script src="js/icons.js?v=2" defer></script>
-<script src="js/app.js?v=2" defer></script>
+<link rel="stylesheet" href="css/style.css?v=3">
+<script src="js/catalog.js?v=3" defer></script>
+<script src="js/pantry.js?v=3" defer></script>
+<script src="js/assembly.js?v=3" defer></script>
+<script src="js/engine.js?v=3" defer></script>
+<script src="js/missions.js?v=3" defer></script>
+<script src="js/sim3d.js?v=3" defer></script>
+<script src="js/lessons.js?v=3" defer></script>
+<script src="js/guide.js?v=3" defer></script>
+<script src="js/cppgen.js?v=3" defer></script>
+<script src="js/viz.js?v=3" defer></script>
+<script src="js/icons.js?v=3" defer></script>
+<script src="js/app.js?v=3" defer></script>
 </head>
 <body>
 <header class="top">
@@ -35,6 +37,7 @@
   <section class="view" id="v-shop" hidden></section>
   <section class="view" id="v-guide" hidden></section>
   <section class="view" id="v-cpp" hidden></section>
+  <section class="view" id="v-3d" hidden></section>
   <section class="view" id="v-profile" hidden></section>
 </main>
 <nav class="tabbar" id="tabbar">
@@ -42,6 +45,7 @@
   <button type="button" data-v="check"><span class="ic ic-check"></span>Verifica</button>
   <button type="button" data-v="shop"><span class="ic ic-shop"></span>Dispensa</button>
   <button type="button" data-v="guide"><span class="ic ic-guide"></span>Guida</button>
+  <button type="button" data-v="3d"><span class="ic ic-3d"></span>3D</button>
   <button type="button" data-v="cpp"><span class="ic ic-cpp"></span>C++</button>
   <button type="button" data-v="profile"><span class="ic ic-prof"></span>Profilo</button>
 </nav>
