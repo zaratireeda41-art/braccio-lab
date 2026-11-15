@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; manifest-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b0e12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Braccio Lab · XENTRIQ INDUSTRY</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/catalog.js" defer></script>
+<script src="js/engine.js" defer></script>
+<script src="js/missions.js" defer></script>
+<script src="js/lessons.js" defer></script>
+<script src="js/guide.js" defer></script>
+<script src="js/cppgen.js" defer></script>
+<script src="js/viz.js" defer></script>
+<script src="js/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true"></span><div><b>Braccio Lab</b><small>XENTRIQ INDUSTRY</small></div></div>
+  <button class="mission-chip" id="missionChip" type="button">Missione</button>
+</header>
+<div class="status" id="status" aria-live="polite"></div>
+<main id="main">
+  <section class="view" id="v-build"></section>
+  <section class="view" id="v-check" hidden></section>
+  <section class="view" id="v-guide" hidden></section>
+  <section class="view" id="v-cpp" hidden></section>
+  <section class="view" id="v-profile" hidden></section>
+</main>
+<nav class="tabbar" id="tabbar">
+  <button type="button" data-v="build" class="on"><span class="ic ic-build"></span>Costruisci</button>
+  <button type="button" data-v="check"><span class="ic ic-check"></span>Verifica</button>
+  <button type="button" data-v="guide"><span class="ic ic-guide"></span>Guida</button>
+  <button type="button" data-v="cpp"><span class="ic ic-cpp"></span>C++</button>
+  <button type="button" data-v="profile"><span class="ic ic-prof"></span>Profilo</button>
+</nav>
+<div class="sheet" id="sheet" hidden></div>
+<div class="toast" id="toast" hidden></div>
+</body>
+</html>
