@@ -1,6 +1,6 @@
 // Braccio Lab · Officina 3D – il braccio 3D generato dal progetto del Costruttore
 import * as THREE from "../vendor/three.module.min.js";
-import { brushed, anodized, carbon, painted } from "./textures.js?v=3";
+import { brushed, anodized, carbon, painted } from "./textures.js?v=4";
 
 let M = null;
 export function mats() {
