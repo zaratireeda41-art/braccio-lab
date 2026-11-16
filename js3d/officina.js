@@ -1,9 +1,10 @@
 // Braccio Lab · Officina 3D – scena, processi e comandi. Caricato solo quando apri la scheda 3D.
 import * as THREE from "../vendor/three.module.min.js";
-import { OrbitControls, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, OutputPass } from "../vendor/three-addons.min.js";
-import * as TX from "./textures.js?v=5";
-import { buildArm, mats } from "./armview.js?v=5";
-import { PROCS, PARAMS, DEF, SAFETY, QUAL } from "./procdata.js?v=5";
+import { OrbitControls } from "../vendor/three-fx.min.js";
+import * as GFX from "./gfx.js?v=6";
+import * as TX from "./textures.js?v=6";
+import { buildArm, mats } from "./armview.js?v=6";
+import { PROCS, PARAMS, DEF, SAFETY, QUAL } from "./procdata.js?v=6";
 
 const D2R = Math.PI / 180, G = 9.81;
 
@@ -18,7 +19,7 @@ export function mount(el, api) {
 
   /* ---------------- DOM ---------------- */
   el.innerHTML = '<div class="o3"><div class="o3-stage" id="o3stage"><div class="o3-hud" id="o3hud"></div>' +
-    '<div class="o3-top"><label class="o3-q"><span class="sr-only">Qualità grafica</span><select id="o3qual">' + [["auto", "Auto"], ["alta", "Alta"], ["media", "Media"], ["bassa", "Bassa"]].map(x => '<option value="' + x[0] + '"' + (st.quality === x[0] ? " selected" : "") + ">Qualità " + x[1] + "</option>").join("") + '</select></label><button type="button" class="o3b" data-o3="cam" aria-label="Rimetti la vista">⟲</button><button type="button" class="o3b' + (st.env ? " on" : "") + '" data-o3="env" aria-label="Mostra l\'area di lavoro">◍</button></div>' +
+    '<div class="o3-top"><label class="o3-q"><span class="sr-only">Qualità grafica</span><select id="o3qual">' + [["auto", "Auto"], ["ultra", "Ultra"], ["alta", "Alta"], ["media", "Media"], ["bassa", "Bassa"]].map(x => '<option value="' + x[0] + '"' + (st.quality === x[0] ? " selected" : "") + ">Qualità " + x[1] + "</option>").join("") + '</select></label><button type="button" class="o3b" data-o3="cam" aria-label="Rimetti la vista">⟲</button><button type="button" class="o3b' + (st.env ? " on" : "") + '" data-o3="env" aria-label="Mostra l\'area di lavoro">◍</button></div>' +
     '<div class="o3-banner" id="o3ban" hidden></div><div class="o3-msg" id="o3msg" hidden></div>' +
     '<button type="button" class="o3-estop" data-o3="estop" aria-label="Arresto di emergenza"><span>STOP</span></button>' +
     '<div class="o3-panel' + (st.panel === false ? " min" : "") + '" id="o3panel"><button type="button" class="o3-grab" data-o3="panel"><span></span>Comandi</button><div class="o3-pbody" id="o3pbody"></div></div></div></div>';
@@ -28,17 +29,16 @@ export function mount(el, api) {
   let renderer, composer, bloom, scene, camera, controls, pmrem, keyLight, arcLight, raf = 0, running = false, lastT = 0;
   function makeRenderer() {
     if (renderer) { renderer.dispose(); renderer.domElement.remove(); }
-    renderer = new THREE.WebGLRenderer({ antialias: Q.aa, powerPreference: "high-performance", preserveDrawingBuffer: !!api.testMode });
+    renderer = GFX.makeRenderer(undefined, { test: !!api.testMode, tier: GFX.TIERS[qname] || GFX.tier(), exposure: 1.05 });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, Q.dpr));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = Q.shadow > 0; renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.enabled = Q.shadow > 0;
     renderer.domElement.className = "o3-canvas"; stage.insertBefore(renderer.domElement, stage.firstChild);
     renderer.domElement.setAttribute("aria-label", "Officina 3D: trascina per ruotare, pizzica per lo zoom");
     if (controls) { controls.dispose(); controls = null; }
   }
   makeRenderer();
   scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
-  pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.42;
+  scene.environment = GFX.envMap(renderer, "workshop"); scene.environmentIntensity = 0.5;
   camera = new THREE.PerspectiveCamera(42, 1, 0.01, 200);
 
   let world = null, arm = null, model = null, R = null, build = null, mission = null, scale = 1, work = null, piece = null;
@@ -593,11 +593,11 @@ export function mount(el, api) {
 
   /* ---------------- composer, qualità, dimensioni ---------------- */
   function makeComposer() {
-    if (composer) composer.dispose && composer.dispose(); composer = null; bloom = null; if (!Q.bloom) return;
-    composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
-    bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.32, 0.95); composer.addPass(bloom); composer.addPass(new OutputPass());
+    const GT = GFX.TIERS[qname] || GFX.tier();
+    if (composer) composer.setTier(GT); else composer = new GFX.Pipeline(renderer, scene, camera, { tier: GT, test: !!api.testMode, ao: { radius: 0.12 * Math.max(0.5, scale || 1), distanceFallOff: 1, thickness: 1 }, aoI: 0.8, bloom: [0.4, 0.4, 3.5], dof: true, focus: 2, aperture: 0.0012, maxblur: 0.005 });
+    bloom = composer.bloom || null;
   }
-  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h); camera.aspect = w / h; const pn = el.querySelector("#o3panel"), open = pn && !pn.classList.contains("min"); if (open && w >= 1000) camera.setViewOffset(w, h, pn.offsetWidth / 2, 0, w, h); else if (open) camera.setViewOffset(w, h, 0, pn.offsetHeight * 0.45, w, h); else camera.clearViewOffset(); camera.updateProjectionMatrix(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); } }
+  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h); camera.aspect = w / h; const pn = el.querySelector("#o3panel"), open = pn && !pn.classList.contains("min"); if (open && w >= 1000) camera.setViewOffset(w, h, pn.offsetWidth / 2, 0, w, h); else if (open) camera.setViewOffset(w, h, 0, pn.offsetHeight * 0.45, w, h); else camera.clearViewOffset(); camera.updateProjectionMatrix(); if (composer) composer.setSize(w, h); }
   function setQuality(name) {
     if (!QUAL[name]) return; qname = name; Q = QUAL[name]; renderer.setPixelRatio(Math.min(devicePixelRatio || 1, Q.dpr)); renderer.shadowMap.enabled = Q.shadow > 0;
     if (keyLight) { keyLight.castShadow = Q.shadow > 0; if (Q.shadow) { keyLight.shadow.mapSize.set(Q.shadow, Q.shadow); if (keyLight.shadow.map) { keyLight.shadow.map.dispose(); keyLight.shadow.map = null; } } }
@@ -621,7 +621,9 @@ export function mount(el, api) {
     hudT += dt; if (hudT > 0.12) { hudT = 0; renderHud(); }
     if (controls) controls.update();
   }
-  function draw() { if (composer) composer.render(); else renderer.render(scene, camera); }
+  let hz = 0; const hzP = new THREE.Vector3();
+  function draw() { if (composer) { const on = arcLight && arcLight.intensity > 0 && /mig|tig|laser|plasma/.test(st.proc); if (on) { hz = 0.35; arcLight.getWorldPosition(hzP); } else hz = Math.max(0, hz - 0.016); composer.setHaze(hz > 0 ? hzP : null, hz * 2.2, 0.06 * Math.sqrt(scale || 1)); if (controls) composer.setFocus(camera.position.distanceTo(controls.target)); const t0 = performance.now(); composer.render(0.016); gms = performance.now() - t0; } else renderer.render(scene, camera); }
+  let gms = 0; const offGfx = GFX.onChange(id => { if (st.quality === "auto" && QUAL[id]) setQuality(id); });
   function frame(now) {
     if (!running) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.05, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
     step(dt); draw();
@@ -633,12 +635,12 @@ export function mount(el, api) {
   let key = "";
   function designKey() { return JSON.stringify(api.build()) + "|" + JSON.stringify(api.mission()); }
   function refresh() { const k = designKey(); if (k !== key) { key = k; buildWorld(); } resume(); }
-  function dispose() { pause(); ro.disconnect(); if (world) disposeGroup(world); if (composer && composer.dispose) composer.dispose(); pmrem.dispose(); renderer.dispose(); el.innerHTML = ""; }
+  function dispose() { pause(); ro.disconnect(); if (world) disposeGroup(world); offGfx(); if (composer && composer.dispose) composer.dispose(); GFX.disposeEnv(renderer); renderer.dispose(); el.innerHTML = ""; }
 
   key = designKey(); buildWorld(); resize(); camHome(); if (!api.testMode) resume(); else { running = false; }
   return {
     resume, pause, refresh, dispose,
-    test: { st, scene, work: () => work, play: () => play, plan: () => planned, res: () => res, proc2: setProc, setProc, setChal, start: startPlay, estop, estopStep, quality: () => qname, setQuality, fk: () => SIM.fk(work.pm, q), q: () => q,
+    test: { st, scene, work: () => work, play: () => play, plan: () => planned, res: () => res, proc2: setProc, setProc, setChal, start: startPlay, estop, estopStep, quality: () => qname, setQuality, gfx: () => ({ tier: qname, passes: composer ? composer.passes.slice() : ["render"], ms: gms, shadow: renderer.shadowMap.enabled, dpr: renderer.getPixelRatio() }), stats: () => GFX.pixelStats(renderer), fk: () => SIM.fk(work.pm, q), q: () => q,
       runTo(sec) { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) step(1 / 30); draw(); return { playing: !!play, el: play ? play.el : null }; },
       renderNow() { resize(); draw(); } }
   };

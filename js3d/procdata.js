@@ -1,5 +1,6 @@
 // Braccio Lab · Officina 3D – processi, parametri, valori iniziali e note di sicurezza
 export const QUAL = {
+  ultra: { dpr: 2.5, shadow: 4096, bloom: true, parts: 4000, sheet: 2048, hm: 180, aa: true },
   alta: { dpr: 2, shadow: 2048, bloom: true, parts: 2600, sheet: 1024, hm: 140, aa: true },
   media: { dpr: 1.35, shadow: 1024, bloom: true, parts: 1200, sheet: 512, hm: 96, aa: true },
   bassa: { dpr: 1, shadow: 0, bloom: false, parts: 450, sheet: 512, hm: 60, aa: false }

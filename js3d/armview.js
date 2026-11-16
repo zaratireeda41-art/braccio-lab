@@ -1,6 +1,8 @@
 // Braccio Lab · Officina 3D – il braccio 3D generato dal progetto del Costruttore
 import * as THREE from "../vendor/three.module.min.js";
-import { brushed, anodized, carbon, painted } from "./textures.js?v=5";
+import { brushed, anodized, carbon, painted } from "./textures.js?v=6";
+import * as P3 from "./parts3d.js?v=6";
+import * as GFX from "./gfx.js?v=6";
 
 let M = null;
 export function mats() {
@@ -46,7 +48,9 @@ export function buildArm(model, build, R) {
   root.name = "braccio";
   // basamento
   const scale = clamp(model.reach, 0.25, 2.5), rb = clamp(0.09 * Math.sqrt(scale) + 0.02, 0.05, 0.3);
-  mesh(new THREE.CylinderGeometry(rb * 1.25, rb * 1.4, 0.03 * Math.sqrt(scale) + 0.01, 48), m.darkSteel, root).position.y = (0.03 * Math.sqrt(scale) + 0.01) / 2;
+  const T = GFX.tier(), LB = GFX.materials(T), HI = T.detail >= 1, hb0 = 0.03 * Math.sqrt(scale) + 0.01;
+  if (HI) { const ped = P3.pedestal(rb * 0.95, hb0, { mat: LB.cast(0x3b4650) }); root.add(ped); }
+  else mesh(new THREE.CylinderGeometry(rb * 1.25, rb * 1.4, hb0, 48), m.darkSteel, root).position.y = hb0 / 2;
   let parent = root;
   for (let k = 0; k < n; k++) {
     const o = R.J[k], kind = model.kinds[k], g = new THREE.Group(); g.name = "J" + (k + 1);
@@ -59,6 +63,12 @@ export function buildArm(model, build, R) {
     const hs = new THREE.Group(); g.add(hs);
     if (kind === "pitch") hs.rotation.x = Math.PI / 2; else if (kind === "roll") hs.rotation.z = -Math.PI / 2;
     if (hob) { const f = (o.M.frame || 23) / 1000; mesh(new THREE.BoxGeometry(f * 1.7, f * 1.25, f * 0.85), m.hobby, hs); mesh(new THREE.CylinderGeometry(f * 0.22, f * 0.22, f * 0.5, 20), m.pla, hs).position.y = f * 0.7; }
+    else if (HI) {
+      hs.add(P3.reducer(rh, lh, { mat: LB.cast(0x2f353b), nOut: 8, nIn: 8 }));
+      const mr = clamp(0.012 + 0.03 * Math.cbrt(o.M.mass || 0.5), 0.014, 0.09), ml = mr * (o.M.type === "ac" ? 3.2 : 2.2), nm = String(o.M.name || "XQ").split(" (")[0].slice(0, 16);
+      const mo = o.M.type === "ac" ? P3.acServo(mr * 2, ml, { name: nm, brake: !!(o.Br && o.Br.id !== "none") }) : P3.stepper(mr * 2, ml, { name: nm }); mo.position.y = -lh / 2 - 0.001; hs.add(mo);
+      const cap = P3.jointCap(rh * 0.9); cap.position.y = lh / 2 + 0.0005; if (kind !== "yaw" || k > 0) hs.add(cap);
+    }
     else {
       mesh(new THREE.CylinderGeometry(rh, rh, lh, 56), m.housing, hs);
       const ring = mesh(new THREE.CylinderGeometry(rh * 1.04, rh * 1.04, lh * 0.16, 56), o.R && o.R.type !== "none" ? m.steel : m.darkSteel, hs); ring.position.y = lh * 0.5;
@@ -71,7 +81,8 @@ export function buildArm(model, build, R) {
     }
     // link
     const L = model.links[k];
-    if (L > 0.001) { const lm = mesh(linkGeo(build.joints[k].link, k === 0 ? L : L, k === 0), linkMat(build.joints[k].link.mat), g); if (k === 0) lm.position.y = 0; }
+    if (L > 0.001 && HI) { const lk = build.joints[k].link || {}, lp = Object.assign({}, lk, { t: lk.t || lk.tw || 3, D: Math.max(+lk.D || 0, 8), B: Math.max(+lk.B || 0, 8), H: Math.max(+lk.H || 0, 8) }), lw = new THREE.Group(); lw.add(P3.machinedLink(lp, L, linkMat(lk.mat), { collar: LB.alu(0x2d3238) })); if (k === 0) lw.position.y = L / 2; else { lw.rotation.z = -Math.PI / 2; lw.position.x = L / 2; } lw.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } }); g.add(lw); }
+    else if (L > 0.001) { const lm = mesh(linkGeo(build.joints[k].link, k === 0 ? L : L, k === 0), linkMat(build.joints[k].link.mat), g); if (k === 0) lm.position.y = 0; }
     parent = g;
   }
   // posizioni dei figli: rifaccio con la stessa logica della cinematica (k=0 traslazione Y, poi X)
@@ -84,7 +95,7 @@ export function buildArm(model, build, R) {
     root, joints, flange, tcp, tool, info, scale, fingers: null, spin: null,
     setQ(q) { for (let k = 0; k < n; k++) { const j = joints[k]; j.g.rotation.set(0, 0, 0); if (j.kind === "yaw") j.g.rotation.y = q[k]; else if (j.kind === "pitch") j.g.rotation.z = q[k]; else j.g.rotation.x = q[k]; } },
     setTool(kind, L, eff) { while (tool.children.length) tool.remove(tool.children[0]); api.fingers = null; api.spin = null; buildTool(api, kind, L, eff); tcp.position.set(L + 0.006, 0, 0); },
-    grip(open) { if (!api.fingers) return; const s = api.fingers.stroke * (open ? 0.5 : 0.08); api.fingers.a.position.z = s; api.fingers.b.position.z = -s; },
+    grip(open) { if (!api.fingers) return; const s = api.fingers.stroke * (open ? 0.5 : 0.08); if (api.fingers.x) { api.fingers.a.position.x = -s; api.fingers.b.position.x = s; return; } api.fingers.a.position.z = s; api.fingers.b.position.z = -s; },
     dispose() { root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   };
   return api;
@@ -102,6 +113,11 @@ function buildTool(api, kind, L, eff) {
   else if (kind === "spindle") { cyl(s * 0.18, s * 0.18, L * 0.62, m.housing, 0.012); cyl(s * 0.185, s * 0.185, L * 0.05, m.steel, L * 0.12); cyl(s * 0.11, s * 0.08, L * 0.12, m.steel, L * 0.64); const sp = new THREE.Group(); sp.position.x = L * 0.76; t.add(sp); const tool = mesh(new THREE.CylinderGeometry(s * 0.035, s * 0.035, L * 0.24, 16).rotateZ(-Math.PI / 2).translate(L * 0.12, 0, 0), m.carbide, sp); tool.name = "fresa"; api.spin = sp; }
   else if (kind === "vac") { cyl(s * 0.05, s * 0.05, L * 0.6, m.steel, 0.012); cyl(s * 0.07, s * 0.16, L * 0.4, m.rubber, L * 0.6); }
   else if (kind === "mag") { const b = mesh(new THREE.BoxGeometry(L * 0.9, s * 0.5, s * 0.5), m.red, t); b.position.x = L * 0.45 + 0.012; const p = mesh(new THREE.BoxGeometry(L * 0.08, s * 0.52, s * 0.52), m.darkSteel, t); p.position.x = L * 0.96; }
+  else if (GFX.tier().detail >= 1) { // pinza parallela dettagliata (asse Y locale → +X dell'utensile, dita lungo Z)
+    const w = new THREE.Group(); w.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0))); w.position.x = 0.006; t.add(w);
+    const gp = P3.gripper(L, { stroke: ((eff && eff.stroke) || 20) / 1000, mat: kind === "pneu" ? GFX.materials().alu(0x9aa5b1) : undefined }); w.add(gp.g); gp.g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    api.fingers = { a: gp.fingers[0], b: gp.fingers[1], stroke: clamp(((eff && eff.stroke) || 20) / 1000, 0.006, 0.08) * 0.5 + gp.s * 0.05, x: true }; api.grip(true);
+  }
   else { // pinza a due dita
     const body = mesh(new THREE.BoxGeometry(L * 0.5, s * 0.35, s * 0.55), kind === "pneu" ? m.alu : m.housing, t); body.position.x = 0.012 + L * 0.25;
     const stroke = clamp(((eff && eff.stroke) || 20) / 1000, 0.006, 0.08) + s * 0.08;
