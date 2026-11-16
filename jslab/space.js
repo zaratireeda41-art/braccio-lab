@@ -2,8 +2,8 @@
 // trapano a colonna, saldatura TIG/MIG manuale, mini tornio 180×300 e rastrelliera dei metalli. Usa window.MET.
 import * as THREE from "../vendor/three.module.min.js";
 import { OrbitControls } from "../vendor/three-addons.min.js";
-import * as TX from "../js3d/textures.js?v=4";
-import { mats } from "../js3d/armview.js?v=4";
+import * as TX from "../js3d/textures.js?v=5";
+import { mats } from "../js3d/armview.js?v=5";
 
 const SKEY = "xentriq-braccio-lab-space-v1";
 const FLOORS = { cemento: "Cemento industriale", resina: "Resina epossidica grigia", legno: "Parquet di rovere", piastrelle: "Piastrelle da officina" };
@@ -149,7 +149,11 @@ export function mountSpace(el, env) {
   /* ---- smerigliatrice, trapano, sega ---- */
   const GR = { disc: "cut1", rpm: 11000, mode: "cut", safe: { occhiali: true, guanti: true, cuffie: false, carter: true }, prog: 0, hold: false };
   const DR = { d: 8, rpm: 880, lube: true, prog: 0, heat: 0, hold: false, burnt: false, holes: 0 };
-  const SW = { vb: 50, prog: 0, hold: false };
+  const SW = { vb: 50, prog: 0, hold: false, prof: "rt4040", L: 300 };
+  // profili commerciali per la sega: il pezzo tagliato diventa un link utilizzabile nell'Area di assemblaggio
+  const PROF = { rt4040: { n: "Tubo quadro 40×40×3", sec: "rtube", B: 40, H: 40, tw: 3 }, rt6040: { n: "Tubo rettangolare 60×40×3", sec: "rtube", B: 40, H: 60, tw: 3 }, rt5050: { n: "Tubo quadro 50×50×4", sec: "rtube", B: 50, H: 50, tw: 4 }, t50: { n: "Tubo tondo Ø50×4", sec: "tube", D: 50, tw: 4 }, t60: { n: "Tubo tondo Ø60×5", sec: "tube", D: 60, tw: 5 }, t80: { n: "Tubo tondo Ø80×5", sec: "tube", D: 80, tw: 5 }, p5012: { n: "Piatto 50×12", sec: "rect", B: 12, H: 50 }, r40: { n: "Tondo pieno Ø40", sec: "round", D: 40 } };
+  function profArea(pr) { const d = pr.sec === "rtube" ? pr.B * pr.H - (pr.B - 2 * pr.tw) * (pr.H - 2 * pr.tw) : pr.sec === "tube" ? Math.PI / 4 * (pr.D * pr.D - Math.pow(pr.D - 2 * pr.tw, 2)) : pr.sec === "rect" ? pr.B * pr.H : Math.PI / 4 * pr.D * pr.D; return d; }
+  function sawPart() { const pr = PROF[SW.prof] || PROF.rt4040, m = MET.get(S.metal), kg = m.rho * profArea(pr) * 1e-6 * SW.L / 1000; const part = { n: pr.n + " × " + SW.L + " mm", metal: m.n, metalId: S.metal, sec: pr.sec, D: pr.D, B: pr.B, H: pr.H, tw: pr.tw, L: SW.L, kg, use: "link / struttura del braccio", t: Date.now() }; S.parts.push(part); save(); env.onPart && env.onPart(part); env.toast && env.toast("Pezzo tagliato e salvato: " + part.n); return part; }
   function grindStep(dt) {
     R.disc.rotation.y += (GR.hold ? 60 : 0) * dt * (rm ? 0.1 : 1);
     if (!GR.hold) { R.grinder.position.lerp(R.gr0, Math.min(1, dt * 6)); return; }
@@ -178,7 +182,7 @@ export function mountSpace(el, env) {
     if (!SW.hold) { R.sawArm.rotation.z += (0 - R.sawArm.rotation.z) * Math.min(1, dt * 4); return; }
     const ideal = SAWV[S.metal] || 40, ratio = SW.vb / ideal; SW.prog += dt * 0.25 * (ratio > 1.5 ? 1.2 : ratio < 0.6 ? 0.4 : 1); R.sawArm.rotation.z = -Math.min(1, SW.prog) * 0.12; R.sawBlade.position.x = 0.3 + Math.sin(performance.now() / 30) * 0.002;
     const g = groups.saw, cp = g.localToWorld(V3(0, 0.62, 0)); if (Math.random() < 0.5) spawn(cp, V3((Math.random() - 0.5) * 0.2, 0.15, 0.2), "#c9a46a", 1, 9.8);
-    if (SW.prog >= 1) { SW.prog = 0; SW.hold = false; S.last = "Taglio con la sega a nastro a " + SW.vb + " m/min (consigliati ≈ " + ideal + " m/min per " + MET.get(S.metal).n + ")" + (ratio > 1.5 ? ": troppo veloce, la lama si scalda e perde i denti." : ratio < 0.6 ? ": lento ma sicuro." : ": ottimo."); panel(); }
+    if (SW.prog >= 1) { SW.prog = 0; SW.hold = false; const pt = sawPart(); S.last = "Taglio di " + pt.n + " con la sega a nastro a " + SW.vb + " m/min (consigliati ≈ " + ideal + " m/min per " + MET.get(S.metal).n + ")" + (ratio > 1.5 ? ": troppo veloce, la lama si scalda e perde i denti." : ratio < 0.6 ? ": lento ma sicuro." : ": ottimo."); panel(); }
   }
   /* ---- saldatura manuale ---- */
   const WD = { proc: "mig", t: 3, I: 0, stick: 12, pre: false, arc: false, path: [], lastX: null, lastT: 0, dist: 0, vs: [], res: null, orbit: false };
@@ -246,7 +250,7 @@ export function mountSpace(el, env) {
         <p class="note">Trascina il dito (o il mouse) sul giunto tra le due lamiere: tieni premuto per l'arco e muoviti con ritmo costante. Il tempo è accelerato ×10. ${m.weld === 0 ? "<b>Attenzione: " + esc(m.n) + " non è saldabile per fusione.</b>" : ""}</p>
         <div class="row"><button type="button" class="btn sm ghost" data-sp="wclr">Nuove lamiere</button><button type="button" class="btn sm ghost" data-sp="worbit" aria-pressed="${!!S.orbitWeld}">${S.orbitWeld ? "Blocca la vista" : "Ruota la vista"}</button></div>`;
     } else if (S.station === "saw") {
-      h = `<h3>Sega a nastro</h3><div class="lb-fields">${metalRow}<label class="lb-f"><span>Velocità lama</span>${sel("vb", [20, 35, 50, 80, 150, 300].map(v => [v, v + " m/min"]), SW.vb)}</label></div><p class="note">Consigliati per ${esc(m.n)}: ≈ ${SAWV[S.metal] || 40} m/min, con lubrorefrigerante su acciai e inox. Almeno 3 denti sempre in presa.</p>${hold("saw", "Tieni premuto per tagliare")}<div class="lb-tbar"><i data-prog="saw"></i></div>`;
+      h = `<h3>Sega a nastro</h3><div class="lb-fields">${metalRow}<label class="lb-f"><span>Velocità lama</span>${sel("vb", [20, 35, 50, 80, 150, 300].map(v => [v, v + " m/min"]), SW.vb)}</label><label class="lb-f"><span>Profilo</span>${sel("sprof", Object.entries(PROF).map(([k, x]) => [k, x.n]), SW.prof)}</label><label class="lb-f"><span>Lunghezza di taglio</span>${sel("sL", [60, 80, 120, 150, 200, 250, 300, 350, 400, 500].map(v => [v, v + " mm"]), SW.L)}</label></div><p class="note">Consigliati per ${esc(m.n)}: ≈ ${SAWV[S.metal] || 40} m/min, con lubrorefrigerante su acciai e inox. Almeno 3 denti sempre in presa.</p>${hold("saw", "Tieni premuto per tagliare")}<div class="lb-tbar"><i data-prog="saw"></i></div>`;
     } else if (S.station === "rack") {
       h = `<h3>Rastrelliera dei metalli</h3><p class="note">Tocca un metallo per usarlo in tutte le macchine.</p><div class="sp-metals">${MET.METALS.map(x => `<button type="button" class="sp-m${x.id === S.metal ? " on" : ""}" data-metal="${x.id}"><i data-col="${x.col}"></i><b>${esc(x.n)}</b><small>${x.rho} kg/m³ · ${x.HB} HB · Rm ${x.Rm} MPa · Vc ${x.vcH || "—"}/${x.vcC} m/min · saldabilità ${"●".repeat(x.weld)}${"○".repeat(3 - x.weld)}</small><small>${esc(x.note)}</small></button>`).join("")}</div>`;
     } else if (S.station === "tools") {
@@ -302,13 +306,13 @@ export function mountSpace(el, env) {
     if (k === "pass") { latheStart(); return; }
     if (k === "newtool") { LT.burnt = false; R.tool.material = M.carbide; S.warn = []; panel(); return; }
     if (k === "newbit") { DR.burnt = false; DR.heat = 0; R.bitMat.color.set(0x9aa3ab); S.warn = []; panel(); return; }
-    if (k === "savepart") { if (!LT.cuts) { env.toast && env.toast("Fai almeno una passata prima di salvare il pezzo."); return; } const dmin = Math.min(...LT.r) * 2000, dmax = Math.max(...LT.r) * 2000, kg = MET.mass(S.metal, lathePart()); const part = { n: (dmax - dmin > 0.5 ? "Albero a gradini Ø" + dmin.toFixed(1) + "/Ø" + dmax.toFixed(1) : "Perno Ø" + dmax.toFixed(1)) + " × " + LT.L * 1000 + " mm", metal: MET.get(S.metal).n, kg, use: dmin <= 12 ? "perno per giunto (cuscinetti 608/6001)" : "albero / distanziale", t: Date.now() }; S.parts.push(part); save(); env.onPart && env.onPart(part); env.toast && env.toast("Pezzo salvato nell'inventario: " + part.n); latheStock(LT.D0); panel(); return; }
+    if (k === "savepart") { if (!LT.cuts) { env.toast && env.toast("Fai almeno una passata prima di salvare il pezzo."); return; } const dmin = Math.min(...LT.r) * 2000, dmax = Math.max(...LT.r) * 2000, kg = MET.mass(S.metal, lathePart()); const part = { metalId: S.metal, sec: "round", D: Math.round(dmin * 10) / 10, L: Math.round(LT.L * 1000), n: (dmax - dmin > 0.5 ? "Albero a gradini Ø" + dmin.toFixed(1) + "/Ø" + dmax.toFixed(1) : "Perno Ø" + dmax.toFixed(1)) + " × " + LT.L * 1000 + " mm", metal: MET.get(S.metal).n, kg, use: dmin <= 12 ? "perno per giunto (cuscinetti 608/6001)" : "albero / distanziale", t: Date.now() }; S.parts.push(part); save(); env.onPart && env.onPart(part); env.toast && env.toast("Pezzo salvato nell'inventario: " + part.n); latheStock(LT.D0); panel(); return; }
     if (k === "wclr") { weldReset(); S.warn = []; S.last = ""; panel(); return; }
     if (k === "worbit") { S.orbitWeld = !S.orbitWeld; controls.enabled = S.orbitWeld; panel(); hint(); return; }
   });
   el.addEventListener("change", e => { const t = e.target, k = t.getAttribute("data-in"), sf = t.getAttribute("data-safe"); if (sf) { GR.safe[sf] = t.checked; panel(); return; } if (!k) return; const v = t.type === "checkbox" ? t.checked : t.value;
     switch (k) { case "metal": setMetal(v); return; case "floor": setFloor(v); return; case "wall": setWall(v); return; case "disc": GR.disc = v; break; case "grpm": GR.rpm = +v; break; case "gmode": GR.mode = v; break; case "dd": DR.d = +v; break; case "drpm": DR.rpm = +v; break; case "lube": DR.lube = v; break;
-      case "stock": latheStock(+v); break; case "ltool": LT.tool = v; break; case "lf": LT.f = +v; break; case "lap": LT.ap = +v; break; case "lc": LT.Lc = +v; break; case "wproc": WD.proc = v; weldSet(); break; case "wt": WD.t = +v; weldSet(); break; case "wpre": WD.pre = v; break; case "vb": SW.vb = +v; break; }
+      case "stock": latheStock(+v); break; case "ltool": LT.tool = v; break; case "lf": LT.f = +v; break; case "lap": LT.ap = +v; break; case "lc": LT.Lc = +v; break; case "wproc": WD.proc = v; weldSet(); break; case "wt": WD.t = +v; weldSet(); break; case "wpre": WD.pre = v; break; case "vb": SW.vb = +v; break; case "sprof": SW.prof = v; break; case "sL": SW.L = +v; break; }
     panel(); });
   el.addEventListener("input", e => { const t = e.target, k = t.getAttribute("data-in"); if (k === "lrpm") { LT.rpm = +t.value; t.previousElementSibling.querySelector("b").textContent = LT.rpm; } else if (k === "wI") { WD.I = +t.value; t.previousElementSibling.querySelector("b").textContent = WD.I + " A"; } else if (k === "wst") { WD.stick = +t.value; t.previousElementSibling.querySelector("b").textContent = WD.stick + " mm"; R.torch.position.y = 0.859 + WD.stick / 1000; } });
   /* ---- ciclo ---- */
@@ -329,7 +333,7 @@ export function mountSpace(el, env) {
     resume() { S.run = true; resize(); last = 0; if (!raf) raf = requestAnimationFrame(tick); },
     pause() { S.run = false; if (raf) cancelAnimationFrame(raf); raf = 0; },
     ctx() { const st = S.station, names = { grind: "smerigliatrice", drill: "trapano a colonna", lathe: "mini tornio", weld: "saldatura " + WD.proc.toUpperCase(), saw: "sega a nastro", rack: "rastrelliera metalli", tools: "parete attrezzi", elec: "banco elettronica" }; const tip = st === "lathe" ? "giri ideali " + Math.round(MET.lathe({ metal: S.metal, D: Math.max(...LT.r) * 2000, tool: LT.tool }).n) + " giri/min" : st === "drill" ? "giri ideali " + Math.round(MET.drill({ metal: S.metal, d: DR.d }).n) + " giri/min" : st === "weld" ? "consigliati " + MET.weldSetup(WD.proc, S.metal, WD.t).I + " A, " + MET.weldSetup(WD.proc, S.metal, WD.t).v + " mm/min" : ""; return { station: st ? names[st] : null, metal: MET.get(S.metal).n, last: S.last, warn: S.warn, tip, parts: S.parts.length }; },
-    test: { go, setMetal, S, LT, WD, GR, DR, latheStart, frame, weldEnd, weldPath(vs) { WD.path = vs.slice(); WD.arc = true; weldEnd(); }, spindle(v) { LT.on = v; }, renderNow() { frame(0.016); }, hold: holdOn },
+    test: { go, setMetal, S, LT, WD, GR, DR, SW, sawPart, latheStart, frame, weldEnd, weldPath(vs) { WD.path = vs.slice(); WD.arc = true; weldEnd(); }, spindle(v) { LT.on = v; }, renderNow() { frame(0.016); }, hold: holdOn },
     dispose() { this.pause(); if (ro) ro.disconnect(); renderer.dispose(); }
   };
 }

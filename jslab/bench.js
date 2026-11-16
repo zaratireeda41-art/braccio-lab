@@ -180,13 +180,24 @@ export function mountBench(el, env) {
     B.nl = nl; const res = CIR.solve({ comps: nl.comps }); B.res = res;
     if (res.ok) for (const id in res.st) if (res.st[id].blown) B.blown[id] = true;
     // flussi di corrente nei fili (eliminazione delle foglie sull'albero dei fili)
-    const inj = {}; B.flows = B.L.wires.map(() => 0);
-    if (res.ok) B.L.comps.forEach(c => { const k = nl.pinKeys[c.id], v = pinInj(c, res.comps[c.id]); k.forEach((kk, j) => { inj[kk] = (inj[kk] || 0) + (v[j] || 0); }); });
-    const adj = {}; B.L.wires.forEach((w, i) => { const a = w.a.join(","), b = w.b.join(","); (adj[a] = adj[a] || []).push(i); (adj[b] = adj[b] || []).push(i); });
-    const deg = {}; for (const k in adj) deg[k] = adj[k].length; const used = new Array(B.L.wires.length).fill(false), q = Object.keys(deg).filter(k => deg[k] === 1);
-    while (q.length) { const k = q.pop(); if (deg[k] !== 1) continue; const wi = adj[k].find(i => !used[i]); if (wi == null) continue; used[wi] = true; const w = B.L.wires[wi], a = w.a.join(","), o = a === k ? w.b.join(",") : a, f = inj[k] || 0; B.flows[wi] = a === k ? f : -f; inj[o] = (inj[o] || 0) + f; inj[k] = 0; deg[k]--; deg[o]--; if (deg[o] === 1) q.push(o); }
+    B.flows = res.ok ? flowsFor(res.comps, nl) : B.L.wires.map(() => 0);
     renderSum(); renderIssues(); updateProps(); updateMeter(); env.onChange && env.onChange();
     return res;
+  }
+  function flowsFor(ms, nl) {
+    nl = nl || B.nl; const inj = {}, fl = B.L.wires.map(() => 0); if (!nl || !ms) return fl;
+    B.L.comps.forEach(c => { const k = nl.pinKeys[c.id], v = pinInj(c, ms[c.id]); if (k) k.forEach((kk, j) => { inj[kk] = (inj[kk] || 0) + (v[j] || 0); }); });
+    const adj = {}; B.L.wires.forEach((w, i) => { const a = w.a.join(","), b = w.b.join(","); (adj[a] = adj[a] || []).push(i); (adj[b] = adj[b] || []).push(i); });
+    const deg = {}; for (const k in adj) deg[k] = adj[k].length; const used = new Array(B.L.wires.length).fill(false), q = Object.keys(deg).filter(k => deg[k] === 1);
+    while (q.length) { const k = q.pop(); if (deg[k] !== 1) continue; const wi = adj[k].find(i => !used[i]); if (wi == null) continue; used[wi] = true; const w = B.L.wires[wi], a = w.a.join(","), o = a === k ? w.b.join(",") : a, f = inj[k] || 0; fl[wi] = a === k ? f : -f; inj[o] = (inj[o] || 0) + f; inj[k] = 0; deg[k]--; deg[o]--; if (deg[o] === 1) q.push(o); }
+    return fl;
+  }
+  // simulazione nel tempo per la vista 4D: misure complete e correnti nei fili a ogni campione
+  function timeline(tEnd, samples) {
+    if (!B.nl) solve(); const nl = B.nl; tEnd = tEnd || (B.L.tran && B.L.tran.tEnd) || 3; samples = samples || 120;
+    const r = CIR.tran({ comps: nl.comps }, { tEnd, dt: Math.min(tEnd / 600, 0.005), samples, full: true });
+    if (!r.ok || !r.s._ms) return { ok: false, t: [], ms: [], flows: [] };
+    return { ok: true, tEnd, t: r.t, ms: r.s._ms, flows: r.s._ms.map(m => flowsFor(m, nl)) };
   }
   function changed() { save(); solve(); draw(); }
   function nodeAt(key) { return B.nl ? B.nl.keyNode[key] : null; }
@@ -465,7 +476,7 @@ export function mountBench(el, env) {
   return {
     resume() { B.run = true; resize(); if (!raf) raf = requestAnimationFrame(tick); },
     pause() { B.run = false; if (raf) cancelAnimationFrame(raf); raf = 0; },
-    ctx: ctxInfo, loadExample, state: B, solve, draw, setTool, runTran,
+    ctx: ctxInfo, loadExample, state: B, solve, draw, setTool, runTran, flowsFor, timeline, pinInj,
     pads() { const out = []; B.L.comps.forEach(c => { if (c.t === "GND") return; CIR.pinPos(c).forEach((p, j) => out.push({ key: c.id + ":" + j, comp: c.id, t: c.t, pin: CIR.TYPES[c.t].pins[j], x: p.x, y: p.y, big: /^(MOTOR|STEPDRV|ACDRIVE|MAINS|REG|L298|BAT)$/.test(c.t), smd: false })); }); return out; },
     joints() { return B.joints; },
     setJoints(j, need) { B.joints = Object.assign({}, j); if (need != null) B.needSolder = !!need; B.view = "pcb"; const vb = el.querySelector('[data-bt="view"]'); if (vb) vb.textContent = "Vista: PCB"; changed(); },
