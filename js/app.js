@@ -563,7 +563,7 @@
     if (O3.loading) return;
     if (!webgl()) { o3fail("Questo browser o dispositivo non ha WebGL attivo: l'Officina 3D non può partire. Prova con Chrome, Safari o Firefox aggiornati e con l'accelerazione hardware attiva."); return; }
     O3.loading = true; $("#v-3d").innerHTML = '<div class="o3-load"><div class="spin"></div><p>Preparo l\'officina 3D…</p></div>';
-    import(new URL("js3d/officina.js?v=5", document.baseURI).href).then(function (mod) {
+    import(new URL("js3d/officina.js?v=6", document.baseURI).href).then(function (mod) {
       O3.loading = false;
       S.o3 = S.o3 || {}; S.o3best = S.o3best || {};
       O3.inst = mod.mount($("#v-3d"), {
@@ -578,7 +578,7 @@
     }).catch(function (e) { O3.loading = false; o3fail("Non sono riuscito a caricare l'Officina 3D (" + (e && e.message ? e.message : "errore") + "). Ricarica la pagina."); if (window.console) console.warn(e); });
   }
   /* ---------- Banchi: Tavola elettronica, Il mio spazio, Assistente (moduli caricati solo quando servono) ---------- */
-  var ASSET_V = "?v=5";
+  var ASSET_V = "?v=6";
   var LAB = { inst: null, loading: false };
   function loadScript(src) { return new Promise(function (ok, ko) { if (document.querySelector('script[data-lab="' + src + '"]')) { ok(); return; } var s = document.createElement("script"); s.src = src + ASSET_V; s.setAttribute("data-lab", src); s.onload = function () { ok(); }; s.onerror = function () { ko(new Error("non trovo " + src)); }; document.head.appendChild(s); }); }
   function armCtx() { try { var r = analyze(), m = mission(); return { summary: "missione \"" + m.title + "\", " + r.J.length + " giunti, massa " + fmt(r.mass, 2) + " kg, punteggio " + Math.round(r.score || 0), issues: (r.issues || []).filter(function (i) { return i.sev !== "info"; }).map(function (i) { return i.title + " — " + i.fix; }) }; } catch (e) { return null; } }
@@ -587,7 +587,7 @@
     if (LAB.loading) return;
     LAB.loading = true; $("#v-lab").innerHTML = '<div class="o3-load"><div class="spin"></div><p>Preparo i banchi di lavoro…</p></div>';
     Promise.all(["js/circuit.js", "js/pcbcat.js", "js/metals.js"].map(loadScript)).then(function () { return Promise.all(["js/assistant.js", "js/tools.js", "js/physics.js"].map(loadScript)); }).then(function () {
-      return import(new URL("jslab/lab.js?v=5", document.baseURI).href);
+      return import(new URL("jslab/lab.js?v=6", document.baseURI).href);
     }).then(function (mod) {
       LAB.loading = false; S.lab = S.lab || {};
       LAB.inst = mod.mount($("#v-lab"), { CIR: window.CIR, PCB: window.PCB, MET: window.MET, AST: window.AST, TLS: window.TLS, PHY: window.PHY, esc: esc, toast: toast, testMode: !!window.__O3TEST, store: function () { return S.lab; }, save: save, armCtx: armCtx });

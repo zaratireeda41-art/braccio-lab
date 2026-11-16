@@ -200,6 +200,13 @@
   }
   /* traiettoria pick & place: profilo cosinusoidale tra pose; restituisce q, w, a per ogni giunto */
   function poses(n) { var D = Math.PI / 180; return [new Array(n).fill(0).map(function (x, i) { return i === 0 ? 0 : i === 1 ? 50 * D : i === 2 ? -80 * D : 0; }), new Array(n).fill(0).map(function (x, i) { return i === 0 ? 60 * D : i === 1 ? 5 * D : i === 2 ? -25 * D : i === 3 ? -20 * D : 0; }), new Array(n).fill(0).map(function (x, i) { return i === 0 ? 60 * D : i === 1 ? 25 * D : i === 2 ? -40 * D : i === 3 ? -30 * D : 0; }), new Array(n).fill(0).map(function (x, i) { return i === 0 ? -70 * D : i === 1 ? 0 : i === 2 ? -10 * D : i === 3 ? -35 * D : 0; }), new Array(n).fill(0).map(function (x, i) { return i === 0 ? 0 : i === 1 ? 50 * D : i === 2 ? -80 * D : 0; })]; }
+  // alza il giunto k quanto basta perché tutti i punti a valle restino sopra il tavolo (bisezione sull'angolo)
+  function restOnTable(asm, q, k, qc) {
+    var minY = function (qq) { var K = fk(asm, qq), m = 1e9; for (var i = k + 1; i < K.joints.length; i++) { var lk = asm.J[i - 1] && asm.J[i - 1].link, r = lk ? partProps(lk).r || 0.015 : 0.015; m = Math.min(m, K.joints[i][1] - r); } return Math.min(m, K.tcp[1] - 0.01); };
+    if (minY(q) >= 0) return false; var lo = q[k], hi = Math.max(q[k], qc || 0), qq = q.slice(); qq[k] = hi; if (minY(qq) < 0) hi = Math.PI / 2;
+    for (var it = 0; it < 22; it++) { var mid = (lo + hi) / 2; qq[k] = mid; if (minY(qq) < 0) lo = mid; else hi = mid; }
+    q[k] = hi; return true;
+  }
   function simulate(asm, ctx, opt) {
     opt = opt || {}; var n = asm.axes, P = opt.poses || poses(n), w = Math.PI / 180 * (asm.speed || 60), segs = [], t0 = 0, kinds = KINDS[n];
     for (var s = 0; s < P.length - 1; s++) { var dq = 0; for (var i = 0; i < n; i++) dq = Math.max(dq, Math.abs(P[s + 1][i] - P[s][i])); var T = Math.max(asm.tacc || 0.5, dq * Math.PI / (2 * w)); segs.push({ a: P[s], b: P[s + 1], t0: t0, T: T }); t0 += T + 0.25; }
@@ -212,7 +219,10 @@
       var u = Math.max(0, Math.min(1, (t - sg.t0) / sg.T));
       for (var k = 0; k < n; k++) { var D = sg.b[k] - sg.a[k]; q.push(sg.a[k] + D * (1 - Math.cos(Math.PI * u)) / 2); wv.push(u > 0 && u < 1 ? D * Math.PI / (2 * sg.T) * Math.sin(Math.PI * u) : 0); av.push(u > 0 && u < 1 ? D * Math.PI * Math.PI / (2 * sg.T * sg.T) * Math.cos(Math.PI * u) : 0); }
       // un giunto senza motore o senza link fissato non segue la traiettoria (cade per gravità)
-      for (var k1 = 0; k1 < n; k1++) { var jj = asm.J[k1]; if (k1 > 0 && kinds[k1] === "pitch" && (!jj.mounted || !jj.tq || !jj.link || !jj.ltq || (jj.wire || {}).mot !== "J" + (k1 + 1))) { q[k1] = Math.max(-1.45, (q[k1] || 0) - Math.min(1, t / 0.6) * 1.2); } }
+      var qCmd = q.slice(), fell = [];
+      for (var k1 = 0; k1 < n; k1++) { var jj = asm.J[k1]; if (k1 > 0 && kinds[k1] === "pitch" && (!jj.mounted || !jj.tq || !jj.link || !jj.ltq || (jj.wire || {}).mot !== "J" + (k1 + 1))) { q[k1] = Math.max(-1.45, (q[k1] || 0) - Math.min(1, t / 0.6) * 1.2); fell.push(k1); } }
+      // ...ma si ferma appoggiato sul tavolo (nessun pezzo attraversa il piano y = 0)
+      for (var kf = 0; kf < fell.length; kf++) if (restOnTable(asm, q, fell[kf], qCmd[fell[kf]])) flag(t, "err", "rest" + fell[kf], "Link " + (fell[kf] + 1) + " caduto sul tavolo", "Il giunto J" + (fell[kf] + 1) + " non è fissato o non è alimentato: il braccio cade per gravità e si appoggia sul piano di lavoro.", "Monta il link, serra le viti con la coppia giusta e collega il motore al suo driver.");
       if (cold && Math.sin(t * 23) > 0.92) q[1] += 0.03;
       var LD = loads(asm, q, av, ctx), fr = { t: t, q: q.slice(), tau: [], util: [], temp: [], tip: LD.K.tcp, com: LD.com, K: LD.K, flags: [] };
       for (var k2 = 0; k2 < n; k2++) {
@@ -234,6 +244,6 @@
     var mx = new Array(n).fill(0), mt = new Array(n).fill(0); frames.forEach(function (fr2) { fr2.util.forEach(function (u2, k3) { mx[k3] = Math.max(mx[k3], u2); }); fr2.temp.forEach(function (tt, k3) { mt[k3] = Math.max(mt[k3], tt); }); });
     return { frames: frames, events: ev, tEnd: tEnd, dt: dt, peakUtil: mx, peakTemp: mt, ok: !ev.some(function (x) { return x.sev === "err"; }), thermalScale: tmScale };
   }
-  var API = { KINDS: KINDS, STOCK: STOCK, material: material, partProps: partProps, fromSpace: fromSpace, boltData: boltData, suggestBolts: suggestBolts, defaults: defaults, fk: fk, loads: loads, evaluate: evaluate, simulate: simulate, poses: poses, motorTorque: motorTorque, jointMass: jointMass, segDist: segDist, by: by, f: f };
+  var API = { KINDS: KINDS, STOCK: STOCK, material: material, partProps: partProps, fromSpace: fromSpace, boltData: boltData, suggestBolts: suggestBolts, defaults: defaults, fk: fk, loads: loads, evaluate: evaluate, simulate: simulate, restOnTable: restOnTable, poses: poses, motorTorque: motorTorque, jointMass: jointMass, segDist: segDist, by: by, f: f };
   if (node) module.exports = API; else root.PHY = API;
 })(typeof window !== "undefined" ? window : this);
