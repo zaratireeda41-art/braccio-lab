@@ -1,9 +1,9 @@
 // Braccio Lab · Officina 3D – scena, processi e comandi. Caricato solo quando apri la scheda 3D.
 import * as THREE from "../vendor/three.module.min.js";
 import { OrbitControls, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, OutputPass } from "../vendor/three-addons.min.js";
-import * as TX from "./textures.js?v=4";
-import { buildArm, mats } from "./armview.js?v=4";
-import { PROCS, PARAMS, DEF, SAFETY, QUAL } from "./procdata.js?v=4";
+import * as TX from "./textures.js?v=5";
+import { buildArm, mats } from "./armview.js?v=5";
+import { PROCS, PARAMS, DEF, SAFETY, QUAL } from "./procdata.js?v=5";
 
 const D2R = Math.PI / 180, G = 9.81;
 
