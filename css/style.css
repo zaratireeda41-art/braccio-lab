@@ -571,3 +571,73 @@ body.inlab main { max-width: 1320px; }
 .lab.in-space .sp-top [data-sp="back"] { display: none; }
 .sp-top .btn { background: rgba(19, 25, 32, .88); }
 .sp-hint { top: auto; bottom: 56px; }
+/* ---- v5: PCB 3D/4D, Tavolo utensili, Area di assemblaggio ---- */
+@media (max-width: 759px) {
+  .lab-nav { gap: 6px; }
+  .lab-seg { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; width: 100%; }
+  .lab-seg::-webkit-scrollbar { display: none; }
+  .lab-seg button { white-space: nowrap; flex: none; padding: 7px 9px; }
+  .lab-seg .lab-t { flex: none; padding: 0 4px 0 6px; font-size: .6rem; }
+  .lab-exit { width: 100%; }
+}
+.p3-stage { height: 58vh; }
+.p3-mode { padding: 2px; background: rgba(19, 25, 32, .88); }
+.p3-mode button { padding: 6px 9px; }
+.p3-tl { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 6px; align-items: center; background: rgba(11, 15, 20, .82); border: 1px solid var(--line2); border-radius: 12px; padding: 6px 8px; }
+.p3-tl input[type="range"] { flex: 1 1 auto; min-width: 60px; width: auto; accent-color: var(--or); min-height: 28px; }
+.p3-tl .btn { flex: none; }
+.p3-tl span { font-variant-numeric: tabular-nums; font-size: .74rem; color: var(--tx); min-width: 64px; text-align: right; }
+.p3-tl select { width: auto; flex: none; min-height: 32px; font-size: .8rem; padding: 4px 22px 4px 8px; background-color: var(--pan2); }
+.p3-tl select.x { background: var(--pan2); color: var(--tx); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; font-size: .74rem; }
+.p3-stage .sp-hint { top: auto; bottom: 58px; }
+.p3-panel { margin-top: 10px; }
+.p3-lay { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.p3-lay .chip { cursor: pointer; font-size: .76rem; }
+.p3-lay input { width: 14px; height: 14px; margin: 0 4px 0 0; accent-color: var(--or); }
+.tb-wrap, .as-wrap { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+.tb-wrap > *, .as-wrap > * { min-width: 0; }
+.tb-wrap select, .as-wrap select, .tb-wrap input[type=text] { max-width: 100%; width: 100%; }
+.tb-spec td { overflow-wrap: anywhere; }
+.tb-stage { height: 46vh; min-height: 300px; }
+.tb-cat { display: grid; gap: 6px; max-height: 52vh; overflow: auto; padding-right: 2px; }
+.tb-g { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--or2); margin: 8px 0 2px; }
+.tb-it { text-align: left; background: #0b0f14; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; color: var(--tx); cursor: pointer; display: block; width: 100%; }
+.tb-it.on { border-color: var(--or); background: rgba(255, 122, 47, .1); }
+.tb-it small { display: block; color: var(--mu); font-size: .72rem; margin-top: 2px; }
+.tb-tg { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.tb-tg .chip { white-space: nowrap; }
+.tb-spec { width: 100%; border-collapse: collapse; font-size: .8rem; margin: 6px 0; }
+.tb-spec td { border-bottom: 1px solid var(--line); padding: 4px 2px; vertical-align: top; } .tb-spec td:first-child { color: var(--mu); width: 40%; }
+.tb-res { border-radius: 10px; padding: 8px 10px; margin: 8px 0; font-size: .86rem; border: 1px solid var(--line2); }
+.tb-res.ok { background: rgba(61, 220, 132, .08); border-color: rgba(61, 220, 132, .35); }
+.tb-res.warn { background: rgba(245, 197, 66, .08); border-color: rgba(245, 197, 66, .4); }
+.tb-res.err { background: rgba(255, 90, 95, .09); border-color: rgba(255, 90, 95, .45); }
+.tb-gauge { height: 10px; border-radius: 6px; background: #0b0f14; border: 1px solid var(--line2); position: relative; overflow: hidden; margin: 6px 0 2px; }
+.tb-gauge i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #3ddc84, #f5c542 70%, #ff5a5f); }
+.tb-gauge b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; }
+.as-stage { height: 52vh; min-height: 320px; }
+.as-slots { display: grid; gap: 6px; }
+.as-slot { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; background: #0b0f14; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.as-slot.ok { border-color: rgba(61, 220, 132, .45); } .as-slot.err { border-color: rgba(255, 90, 95, .5); } .as-slot.warn { border-color: rgba(245, 197, 66, .5); }
+.as-slot.on { box-shadow: 0 0 0 2px var(--or); }
+.as-slot small { display: block; color: var(--mu); font-size: .72rem; }
+.as-slot .row { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.as-inv { display: grid; gap: 6px; }
+.as-bars { display: grid; gap: 4px; margin: 6px 0; }
+.as-bar { display: grid; grid-template-columns: 34px 1fr 64px; gap: 6px; align-items: center; font-size: .74rem; }
+.as-bar .tb-gauge { margin: 0; }
+.as-ev { list-style: none; padding: 0; margin: 6px 0; } .as-ev li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .82rem; } .as-ev small { display: block; color: var(--mu); }
+.as-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; }
+.as-tabs button { white-space: nowrap; }
+.as-wire { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.as-wire .lb-f { font-size: .74rem; }
+.as-hud { position: absolute; right: 8px; top: 54px; background: rgba(11, 15, 20, .82); border: 1px solid var(--line2); border-radius: 10px; padding: 6px 8px; font-size: .7rem; color: var(--tx); pointer-events: none; font-variant-numeric: tabular-nums; max-width: 46%; }
+.as-hud:empty { display: none; }
+@media (min-width: 1000px) {
+  .tb-wrap, .as-wrap { grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); align-items: start; }
+  .tb-stage, .as-stage { height: 62vh; }
+  .tb-cat { max-height: 34vh; }
+}
+.as-tl { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; }
+.as-tl input[type="range"] { flex: 1 1 auto; min-width: 60px; accent-color: var(--or); min-height: 28px; }
+.as-tl small { font-variant-numeric: tabular-nums; font-size: .74rem; color: var(--mu); min-width: 76px; text-align: right; }
