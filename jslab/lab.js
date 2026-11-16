@@ -1,8 +1,8 @@
 // Braccio Lab · Banchi di lavoro: Tavola elettronica (circuito, saldatura, catalogo PCB, PCB 3D/4D), Tavolo utensili,
 // Area di assemblaggio, Il mio spazio (3D) e Assistente.
-import { mountBench } from "./bench.js?v=5";
-import { mountSolder } from "./solder.js?v=5";
-import { mountPcb } from "./pcbui.js?v=5";
+import { mountBench } from "./bench.js?v=6";
+import { mountSolder } from "./solder.js?v=6";
+import { mountPcb } from "./pcbui.js?v=6";
 
 export function mount(el, api) {
   const esc = api.esc, AST = api.AST, reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -31,10 +31,10 @@ export function mount(el, api) {
   function webgl() { try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); } catch (e) { return false; } }
   // caricamento pigro dei moduli 3D (three.js arriva solo quando serve)
   const MODS = {
-    space: { title: "Il mio spazio", msg: "Preparo il tuo spazio…", load: () => import("./space.js?v=5"), make: (mod, box, env) => mod.mountSpace(box, Object.assign(env, { MET: api.MET, onBack: () => show("circ"), onPart: p => { if (M.asm && M.asm.refresh) M.asm.refresh(); }, onChange: () => {} })) },
-    p3d: { title: "PCB 3D/4D", msg: "Genero la scheda in 3D…", load: () => import("./pcb3d.js?v=5"), make: (mod, box, env) => mod.mountPcb3d(box, Object.assign(env, { CIR: api.CIR, bench: () => M.bench })) },
-    tools: { title: "Tavolo utensili", msg: "Preparo il tavolo utensili…", load: () => import("./toolbench.js?v=5"), make: (mod, box, env) => mod.mountTools(box, Object.assign(env, { TLS: api.TLS, MET: api.MET, ask: q => openAi(q) })) },
-    asm: { title: "Area di assemblaggio", msg: "Preparo l'area di assemblaggio…", load: () => import("./assembly3d.js?v=5"), make: (mod, box, env) => mod.mountAssembly(box, Object.assign(env, { PHY: api.PHY, TLS: api.TLS, CAT: window.CAT, ENG: window.ENG, MET: api.MET, CIR: api.CIR, bench: () => M.bench, ask: q => openAi(q), goto: p => show(p) })) }
+    space: { title: "Il mio spazio", msg: "Preparo il tuo spazio…", load: () => import("./space.js?v=6"), make: (mod, box, env) => mod.mountSpace(box, Object.assign(env, { MET: api.MET, onBack: () => show("circ"), onPart: p => { if (M.asm && M.asm.refresh) M.asm.refresh(); }, onChange: () => {} })) },
+    p3d: { title: "PCB 3D/4D", msg: "Genero la scheda in 3D…", load: () => import("./pcb3d.js?v=6"), make: (mod, box, env) => mod.mountPcb3d(box, Object.assign(env, { CIR: api.CIR, bench: () => M.bench })) },
+    tools: { title: "Tavolo utensili", msg: "Preparo il tavolo utensili…", load: () => import("./toolbench.js?v=6"), make: (mod, box, env) => mod.mountTools(box, Object.assign(env, { TLS: api.TLS, MET: api.MET, ask: q => openAi(q) })) },
+    asm: { title: "Area di assemblaggio", msg: "Preparo l'area di assemblaggio…", load: () => import("./assembly3d.js?v=6"), make: (mod, box, env) => mod.mountAssembly(box, Object.assign(env, { PHY: api.PHY, TLS: api.TLS, CAT: window.CAT, ENG: window.ENG, MET: api.MET, CIR: api.CIR, bench: () => M.bench, ask: q => openAi(q), goto: p => show(p) })) }
   };
   function open3d(k) {
     const D = MODS[k]; if (M[k] || M.loading[k]) { if (M[k]) M[k].resume(); return; }

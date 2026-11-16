@@ -3,8 +3,10 @@
 // l'utensile e la coppia giusti (js/tools.js), la fisica (massa, baricentro, inerzia, coppie, flessione,
 // ribaltamento, cablaggio) è calcolata da js/physics.js e la simulazione muove il braccio segnalando gli errori.
 import * as THREE from "../vendor/three.module.min.js";
-import { OrbitControls, RoomEnvironment } from "../vendor/three-addons.min.js";
-import * as TX from "../js3d/textures.js?v=5";
+import { OrbitControls } from "../vendor/three-fx.min.js";
+import * as GFX from "../js3d/gfx.js?v=6";
+import * as P3 from "../js3d/parts3d.js?v=6";
+import * as TX from "../js3d/textures.js?v=6";
 
 const AKEY = "xentriq-braccio-lab-asm-v1", SPKEY = "xentriq-braccio-lab-space-v1", TKEY = "xentriq-braccio-lab-tools-v1";
 const rd = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
@@ -75,73 +77,104 @@ export function mountAssembly(el, env) {
       <div class="card" id="asSim"></div></div>
     <div class="card"><div class="as-tabs" role="tablist">${[["monta", "Montaggio"], ["serra", "Serraggio"], ["cavi", "Cablaggio"], ["verifica", "Verifica fisica"]].map(([k, n]) => `<button type="button" class="chip" role="tab" data-tab="${k}">${n}</button>`).join("")}</div><div id="asPanel"></div></div></div>`;
   const $ = s => el.querySelector(s), canvas = $("#asCv"), stage = $("#asStage");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lite, preserveDrawingBuffer: test, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, test ? 1 : 1.5)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = !lite;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x14171b);
-  const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.55;
+  { const tp = el.querySelector(".sp-top"); if (tp) tp.insertAdjacentHTML("beforeend", GFX.selectHtml("asQ", "gfx-q")); }
+  el.addEventListener("change", e => { const t = e.target; if (t.getAttribute && t.getAttribute("data-gfx") === "q") GFX.setSetting(t.value); });
+  let T = GFX.tier();
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z), UP = V3(0, 1, 0);
+  const renderer = GFX.makeRenderer(canvas, { test, tier: T, exposure: 1.0 });
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x14171b); scene.fog = new THREE.Fog(0x14171b, 7, 16);
+  scene.environment = GFX.envMap(renderer, "workshop"); scene.environmentIntensity = 0.75;
   const camera = new THREE.PerspectiveCamera(42, 1, 0.02, 40), controls = new OrbitControls(camera, canvas); controls.enableDamping = !rm; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 0.3; controls.maxDistance = 7;
-  scene.add(new THREE.HemisphereLight(0xeef2ff, 0x2a2622, 0.75)); const sun = new THREE.DirectionalLight(0xfff2e0, 1.7); sun.position.set(1.6, 3.2, 1.8); sun.castShadow = !lite; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2 }); scene.add(sun);
-  const SEG = lite ? 12 : 24, TY = -0.8;
+  scene.add(new THREE.HemisphereLight(0xeef2ff, 0x2a2622, 0.3)); const sun = new THREE.DirectionalLight(0xfff2e0, 2.1); sun.position.set(1.6, 3.2, 1.8); scene.add(sun); const fill = new THREE.DirectionalLight(0xbcd6ff, 0.45); fill.position.set(-2, 1.5, 1); scene.add(fill);
+  let pipe = null, cs = null;
+  function setupTier() { GFX.setupShadow(sun, T, 1.9, { far: 9, bias: -0.0004, normalBias: 0.015 }); if (pipe) pipe.setTier(T); else pipe = new GFX.Pipeline(renderer, scene, camera, { tier: T, test, ao: { radius: 0.08, distanceFallOff: 1, thickness: 1 }, aoI: 1, bloom: [0.35, 0.45, 5], dof: true, focus: 2, aperture: 0.004, maxblur: 0.006 }); if (cs) cs.dispose(); cs = T.contact ? new GFX.ContactShadow(renderer, scene, { w: 2.3, d: 1.5, y: 0.0012, res: T.csRes, far: 0.6, blur: 2.4, opacity: 0.75, darkness: 1.3, every: 3 }) : null; }
+  setupTier();
+  const gov = new GFX.Governor(n => { env.toast && env.toast("Grafica ridotta a " + GFX.TIERS[n].n + " per restare fluida"); });
+  const SEG = Math.max(10, Math.round(24 * T.seg)), TY = -0.8, LIB = () => GFX.materials(T);
   const mat = (c, m, r, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, metalness: m == null ? 0.3 : m, roughness: r == null ? 0.5 : r }, o || {}));
-  const MT = { steel: mat(0xb9c0c7, 1, 0.32), alu: mat(0xd5dbe1, 1, 0.28), dark: mat(0x2b2f36, 0.4, 0.5), black: mat(0x141517, 0.3, 0.55), blue: mat(0x2a62c9, 0.3, 0.4), orange: mat(0xff7a2f, 0.2, 0.45), grey: mat(0x6d747c, 0.7, 0.4), ghost: new THREE.MeshBasicMaterial({ color: 0xff7a2f, wireframe: true, transparent: true, opacity: 0.35 }), cab: mat(0xd9dde2, 0.2, 0.6), pcb: mat(0x1f7a3a, 0.1, 0.6), copper: mat(0xc98b4a, 1, 0.35) };
-  const BOLT = { none: mat(0x8a8f96, 0.9, 0.4), ok: mat(0x3ddc84, 0.6, 0.4, { emissive: 0x0b3d22 }), warn: mat(0xf5c542, 0.6, 0.4, { emissive: 0x3a2d05 }), err: mat(0xff5a5f, 0.5, 0.4, { emissive: 0x4a0d10 }) };
-  function M(geo, m, p, x, y, z) { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = !lite; o.position.set(x || 0, y || 0, z || 0); (p || scene).add(o); return o; }
+  const MT = { steel: LIB().steel, alu: LIB().alu(), dark: LIB().paint(0x2b2f36), black: LIB().plastic(0x141517, 0.5), blue: LIB().paint(0x2a62c9), orange: LIB().paint(0xff7a2f), grey: LIB().cast(0x4a535c), ghost: new THREE.MeshBasicMaterial({ color: 0xff7a2f, wireframe: true, transparent: true, opacity: 0.35 }), cab: LIB().paint(0xd9dde2), pcb: mat(0x1f7a3a, 0.1, 0.6), copper: LIB().copper };
+  const BOLT = { none: LIB().oxide, ok: mat(0x3ddc84, 0.7, 0.35, { emissive: 0x0b3d22 }), warn: mat(0xf5c542, 0.7, 0.35, { emissive: 0x3a2d05 }), err: mat(0xff5a5f, 0.6, 0.35, { emissive: 0x4a0d10 }) };
+  function M(geo, m, p, x, y, z) { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = T.shadow > 0; o.position.set(x || 0, y || 0, z || 0); (p || scene).add(o); return o; }
   const box = (w, h, d, m, p, x, y, z) => M(new THREE.BoxGeometry(w, h, d), m, p, x, y, z), cyl = (r1, r2, h, m, p, x, y, z, s) => M(new THREE.CylinderGeometry(r1, r2, h, s || SEG), m, p, x, y, z);
-  // ambiente: pavimento, tavolo saldato, quadro elettrico
-  const floor = M(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({ map: TX.concrete(17).map, roughness: 0.92 })); floor.rotation.x = -Math.PI / 2; floor.position.y = TY;
-  const top = box(2.2, 0.04, 1.4, mat(0x50565d, 0.8, 0.45), null, 0, -0.02, 0); top.userData.slot = null;
-  [[-1.05, -0.65], [1.05, -0.65], [-1.05, 0.65], [1.05, 0.65]].forEach(([x, z]) => box(0.06, -TY - 0.04, 0.06, MT.dark, null, x, TY / 2 - 0.02, z));
-  // griglia di fori del tavolo
-  { const g = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.006, 0.006, 0.002, 8), new THREE.MeshBasicMaterial({ color: 0x1a1c1f }), 220), m4 = new THREE.Matrix4(); let k = 0; for (let x = -1; x <= 1.001; x += 0.1) for (let z = -0.6; z <= 0.601; z += 0.12) if (k < 220) { m4.makeTranslation(x, 0.001, z); g.setMatrixAt(k++, m4); } g.count = k; scene.add(g); }
+  const rb = (w, h, d, r, m, p, x, y, z) => M(P3.rbox(w, h, d, r), m, p, x, y, z);
+  // ambiente: pavimento in cemento vissuto, pareti, tavolo saldato con piano forato, quadro elettrico aperto
+  const world = new THREE.Group(); scene.add(world);
+  function buildRoom() {
+    world.clear(); const L = LIB(), fl = GFX.texSet("concrete", T, [4, 4]), wl = GFX.texSet("wall", T, [2, 1]);
+    const floor = M(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({ map: fl.map, normalMap: fl.normal || null, roughnessMap: fl.rough || null, roughness: 1, metalness: 0 }), world); floor.rotation.x = -Math.PI / 2; floor.position.y = TY; floor.castShadow = false;
+    const wm = new THREE.MeshStandardMaterial({ map: wl.map, normalMap: wl.normal || null, roughness: 0.85 }); const back = M(new THREE.PlaneGeometry(8, 3.4), wm, world, 0, TY + 1.7, -2.4); back.castShadow = false; const side = M(new THREE.PlaneGeometry(8, 3.4), wm, world, -3.2, TY + 1.7, 0); side.rotation.y = Math.PI / 2; side.castShadow = false;
+    const wr = T.detail ? GFX.texSet("worn", T, [3, 2]) : {}; const topM = T.phys ? new THREE.MeshPhysicalMaterial({ color: 0x5d636a, metalness: 0.9, roughness: 0.42, roughnessMap: wr.rough || null, clearcoat: 0.1 }) : mat(0x50565d, 0.8, 0.45);
+    const top = rb(2.2, 0.04, 1.4, 0.004, topM, world, 0, -0.02, 0); top.userData.slot = null;
+    [[-1.05, -0.65], [1.05, -0.65], [-1.05, 0.65], [1.05, 0.65]].forEach(([x, z]) => { rb(0.06, -TY - 0.06, 0.06, 0.004, L.paint(0x2b2f36), world, x, TY / 2 - 0.03, z); const ft = new THREE.Mesh(P3.hexBoltGeo(0.03), L.zinc); ft.position.set(x, TY + 0.012, z); world.add(ft); cyl(0.03, 0.032, 0.012, L.rubber, world, x, TY + 0.006, z); });
+    [-0.65, 0.65].forEach(z => rb(2.1, 0.05, 0.04, 0.003, L.paint(0x2b2f36), world, 0, TY + 0.18, z));
+    // griglia di fori del tavolo (Ø 16 mm con smusso)
+    { const n = 220, g = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.008, 0.008, 0.002, 12), new THREE.MeshBasicMaterial({ color: 0x0c0d0f }), n), ch = new THREE.InstancedMesh(new THREE.TorusGeometry(0.0085, 0.0012, 4, 16).rotateX(Math.PI / 2), L.steel, n), m4 = new THREE.Matrix4(); let k = 0; for (let x = -1; x <= 1.001; x += 0.1) for (let z = -0.6; z <= 0.601; z += 0.12) if (k < n) { m4.makeTranslation(x, 0.0011, z); g.setMatrixAt(k, m4); ch.setMatrixAt(k++, m4); } g.count = ch.count = k; world.add(g); if (T.detail) world.add(ch); }
+    // vaschetta con viteria e chiave dinamometrica appoggiata
+    if (T.detail) { const tray = new THREE.Group(); tray.position.set(0.85, 0, 0.48); world.add(tray); rb(0.22, 0.05, 0.14, 0.01, L.plastic(0x2a62c9, 0.45), tray, 0, 0.025, 0); const bm = new THREE.InstancedMesh(P3.hexBoltGeo(0.01), L.zinc, 14), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(); for (let i = 0; i < 14; i++) { e.set(Math.PI / 2 * (i % 3 ? 1 : 0.2), i * 1.3, 0); q.setFromEuler(e); m4.compose(V3(-0.08 + (i % 7) * 0.026, 0.052, -0.03 + Math.floor(i / 7) * 0.05), q, V3(1, 1, 1)); bm.setMatrixAt(i, m4); } tray.add(bm);
+      const wr2 = new THREE.Group(); wr2.position.set(0.6, 0.012, 0.52); wr2.rotation.y = 0.35; world.add(wr2); const hd = cyl(0.012, 0.012, 0.36, L.steel, wr2); hd.rotation.z = Math.PI / 2; const gr = cyl(0.016, 0.016, 0.14, L.rubber, wr2, -0.13, 0, 0); gr.rotation.z = Math.PI / 2; const head = cyl(0.022, 0.022, 0.02, L.steel, wr2, 0.19, 0, 0); void head; }
+    // lampada a sospensione (tubo luminoso)
+    const lampM = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xf2f6ff, emissiveIntensity: 3.2 }); box(1.4, 0.02, 0.06, lampM, world, 0, 1.9, 0.1).castShadow = false; box(1.44, 0.05, 0.1, L.paint(0x2b2f36), world, 0, 1.925, 0.1).castShadow = false;
+  }
+  buildRoom();
   const cab = new THREE.Group(); cab.position.set(-0.78, 0, -0.42); scene.add(cab); cab.userData.slot = "ctrl";
-  box(0.5, 0.42, 0.2, MT.cab, cab, 0, 0.21, 0).userData.slot = "ctrl"; box(0.46, 0.38, 0.01, mat(0xf2f4f6, 0, 0.8), cab, 0, 0.21, 0.095);
-  const estopG = new THREE.Group(); estopG.position.set(0.18, 0.36, 0.11); cab.add(estopG); box(0.07, 0.07, 0.03, mat(0xf5c542, 0.1, 0.5), estopG); const estopBtn = cyl(0.022, 0.026, 0.025, mat(0xd8262b, 0.1, 0.4), estopG, 0, 0, 0.025); estopBtn.rotation.x = Math.PI / 2; estopG.userData.slot = "estop";
+  { const L = LIB(), sh = L.paint(0xd9dde2); rb(0.5, 0.42, 0.012, 0.003, sh, cab, 0, 0.21, -0.094).userData.slot = "ctrl"; [-1, 1].forEach(s => rb(0.012, 0.42, 0.2, 0.003, sh, cab, s * 0.244, 0.21, 0)); rb(0.5, 0.012, 0.2, 0.003, sh, cab, 0, 0.414, 0); rb(0.5, 0.012, 0.2, 0.003, sh, cab, 0, 0.006, 0);
+    rb(0.46, 0.38, 0.004, 0.002, L.zinc, cab, 0, 0.21, -0.085); [0.3, 0.12].forEach(y => { const r = box(0.44, 0.035, 0.008, L.steel, cab, 0, y, -0.078); void r; }); [0.39, 0.03].forEach(y => box(0.44, 0.03, 0.03, L.plastic(0x8f969d, 0.6), cab, 0, y, -0.065));
+    const door = new THREE.Group(); door.position.set(0.25, 0.21, 0.1); door.rotation.y = -1.9; cab.add(door); rb(0.5, 0.42, 0.012, 0.003, sh, door, 0.25, 0, 0); box(0.46, 0.38, 0.004, L.rubber, door, 0.25, 0, -0.008); cyl(0.012, 0.012, 0.03, L.black, door, 0.46, 0, 0.01).rotation.x = Math.PI / 2; }
+  const estopG = new THREE.Group(); estopG.position.set(0.18, 0.43, 0.06); cab.add(estopG); rb(0.07, 0.035, 0.07, 0.005, LIB().plastic(0xf5c542, 0.45), estopG); const estopBtn = cyl(0.022, 0.026, 0.02, mat(0xd8262b, 0.1, 0.4), estopG, 0, 0.026, 0); estopG.userData.slot = "estop";
   const cabIn = new THREE.Group(); cab.add(cabIn); cabIn.position.set(0, 0, 0.1);
   const arm = new THREE.Group(); scene.add(arm);
-  const comM = M(new THREE.SphereGeometry(0.022, 16, 12), mat(0xff7a2f, 0.2, 0.3, { emissive: 0xff5a1f, emissiveIntensity: 0.6 })); const comLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0xff7a2f, dashSize: 0.02, gapSize: 0.015 })); scene.add(comLine);
+  const comM = M(new THREE.SphereGeometry(0.022, 16, 12), mat(0xff7a2f, 0.2, 0.3, { emissive: 0xff5a1f, emissiveIntensity: 0.6 })); comM.castShadow = false; const comLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0xff7a2f, dashSize: 0.02, gapSize: 0.015 })); scene.add(comLine);
   const trailN = 160, trailPos = new Float32Array(trailN * 3), trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x5ab0ff, transparent: true, opacity: 0.8 })); trail.geometry.setAttribute("position", new THREE.BufferAttribute(trailPos, 3)); trail.geometry.setDrawRange(0, 0); scene.add(trail); let trailK = 0;
-  const cables = new THREE.Group(); scene.add(cables);
-  const V3 = (x, y, z) => new THREE.Vector3(x, y, z), UP = V3(0, 1, 0);
+  const cables = new THREE.Group(); scene.add(cables); let flex = [], chain = null;
+  const offGfx = GFX.onChange(id => { T = GFX.TIERS[id]; setupTier(); buildRoom(); build(); const s = el.querySelector("#asQ"); if (s) s.value = GFX.setting(); });
   let R = { joints: [], links: [], eff: null, base: null };
   /* modello di ogni slot, costruito dallo stato */
-  function boltRing(g, n, r, y, st, slot) { const m = BOLT[st] || BOLT.none; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, b = cyl(0.0055, 0.0055, 0.006, m, g, Math.cos(a) * r, y, Math.sin(a) * r, 6); b.userData.slot = slot; } }
+  function boltRing(g, n, r, y, st, slot, d) { const im = P3.boltRing(g, n, r, y, d || 0.007, BOLT[st] || BOLT.none, { down: y < 0 }); im.userData.slot = slot; return im; }
   function tqState(tq) { if (!tq) return "none"; if (tq.strip || /spanata|snervata/.test(tq.state || "")) return "err"; return tq.sev === "ok" ? "ok" : "warn"; }
+  function motor3d(Mo, mf, ml) { if (Mo.type === "servo_hobby") return P3.hobbyServo(mf); if (/stepper/.test(Mo.type || "")) return P3.stepper(mf, ml, { name: Mo.name ? Mo.name.split(" (")[0].slice(0, 16) : "" }); return P3.acServo(mf, ml, { name: (Mo.name || "XQ-SV").split(" (")[0].slice(0, 16), kw: Mo.P ? String(Math.round(Mo.P) / 1000).replace(".", ",") : "0,4", brake: !!Mo.brake }); }
   function build() {
-    arm.clear(); cabIn.clear(); R = { joints: [], links: [], eff: null, base: null };
+    arm.clear(); cabIn.clear(); R = { joints: [], links: [], eff: null, base: null }; const L = LIB();
     const r = S.res || evalNow();
-    // basamento
+    // basamento in ghisa con nervature e tirafondi
     const bg = new THREE.Group(); arm.add(bg); R.base = bg; bg.userData.slot = "base";
-    if (A.base.mounted) { box(0.32, 0.02, 0.32, MT.dark, bg, 0, 0.01, 0).userData.slot = "base"; cyl(0.1, 0.11, 0.1, MT.orange, bg, 0, 0.07, 0).userData.slot = "base"; const st = tqState(A.base.tq); [[-0.13, -0.13], [0.13, -0.13], [-0.13, 0.13], [0.13, 0.13]].forEach(([x, z]) => { const b = cyl(0.009, 0.009, 0.008, BOLT[st] || BOLT.none, bg, x, 0.024, z, 6); b.userData.slot = "base"; }); }
-    else { const g = box(0.32, 0.12, 0.32, MT.ghost, bg, 0, 0.06, 0); g.castShadow = false; g.userData.slot = "base"; }
+    if (A.base.mounted) { rb(0.32, 0.02, 0.32, 0.004, L.cast(0x3b4650), bg, 0, 0.01, 0); const ped = P3.pedestal(0.075, 0.1, { mat: L.paint(0xff7a2f) }); ped.position.y = 0.02; bg.add(ped); const st = tqState(A.base.tq); const im = new THREE.InstancedMesh(P3.hexBoltGeo(0.012), BOLT[st] === BOLT.none ? L.zinc : BOLT[st], 4), m4 = new THREE.Matrix4(); [[-0.13, -0.13], [0.13, -0.13], [-0.13, 0.13], [0.13, 0.13]].forEach(([x, z], k) => { m4.makeTranslation(x, 0.02, z); im.setMatrixAt(k, m4); }); im.castShadow = true; bg.add(im); }
+    else { const g = box(0.32, 0.12, 0.32, MT.ghost, bg, 0, 0.06, 0); g.castShadow = false; }
     A.J.forEach((j, i) => {
       const jm = PHY.jointMass(j), Mo = jm.M, Re = jm.R, fr = (Re.frames ? Re.frames[1] : Mo.frame || 60) / 1000, g = new THREE.Group(); g.userData.slot = "J" + (i + 1); arm.add(g); R.joints.push(g);
       const rr = Math.max(0.03, fr * 0.62), hl = Math.max(0.05, fr * 0.9);
-      if (j.mounted) { const red = cyl(rr, rr, hl, MT.grey, g, 0, 0, 0); red.userData.slot = g.userData.slot; red.userData.heat = true; const fl = cyl(rr * 0.82, rr * 0.82, 0.012, MT.steel, g, 0, hl / 2 + 0.006, 0); fl.userData.slot = g.userData.slot;
-        const mf = Math.max(0.028, (Mo.frame || 42) / 1000), mot = box(mf, Math.max(0.06, Mo.mass * 0.05 + 0.05), mf, Mo.type === "ac" ? MT.blue : MT.black, g, 0, -(hl / 2 + Math.max(0.06, Mo.mass * 0.05 + 0.05) / 2), 0); mot.userData.slot = g.userData.slot; mot.userData.heat = true;
-        boltRing(g, Math.min(12, j.bolts.n), rr * 0.82, -hl / 2 - 0.003, tqState(j.tq), g.userData.slot); }
-      else { const gh = cyl(rr, rr, hl, MT.ghost, g, 0, 0, 0); gh.castShadow = false; gh.userData.slot = g.userData.slot; }
+      if (j.mounted) { const red = P3.reducer(rr, hl, { mat: L.cast(0x2f353b), nOut: Math.min(12, Math.max(6, j.lbolts.n || 8)), nIn: 8 }); g.add(red);
+        const mf = Math.max(0.028, (Mo.frame || 42) / 1000), ml = Math.max(0.06, Mo.mass * 0.05 + 0.05), mo = motor3d(Mo, mf, ml); mo.position.y = -hl / 2 - 0.002; g.add(mo); g.userData.motorEnd = -hl / 2 - ml;
+        boltRing(g, Math.min(12, j.bolts.n), rr * 0.82, -hl / 2 - 0.003, tqState(j.tq), g.userData.slot, Math.max(0.005, rr * 0.09)); }
+      else { const gh = cyl(rr, rr, hl, MT.ghost, g, 0, 0, 0); gh.castShadow = false; }
       g.userData.hl = hl; g.userData.rr = rr;
       const lg = new THREE.Group(); lg.userData.slot = "L" + (i + 1); arm.add(lg); R.links.push(lg);
-      if (j.link) { const p = j.link, pp = PHY.partProps(p), al = /^al|ti/.test(p.metal), lm = mat(al ? 0xd5dbe1 : /ti/.test(p.metal) ? 0xa7a08f : 0x9aa3ab, 1, al ? 0.28 : 0.36); let mesh;
-        if (p.sec === "rtube" || p.sec === "rect") mesh = box((p.B || 40) / 1000, 1, (p.H || p.B || 40) / 1000, lm, lg); else mesh = cyl((p.D || 40) / 2000, (p.D || 40) / 2000, 1, lm, lg, 0, 0, 0);
-        mesh.userData.slot = lg.userData.slot; mesh.userData.link = true; lg.userData.mesh = mesh; lg.userData.mat = lm; lg.userData.L = pp.L / 1000;
-        const st = tqState(j.ltq), pl = cyl((p.D || p.B || 40) / 1400 + 0.01, (p.D || p.B || 40) / 1400 + 0.01, 0.01, MT.steel, lg, 0, 0, 0); pl.userData.slot = lg.userData.slot; lg.userData.plate = pl; const bolts = new THREE.Group(); lg.add(bolts); lg.userData.bolts = bolts; boltRing(bolts, Math.min(8, j.lbolts.n), (p.D || p.B || 40) / 1400, 0.008, st, lg.userData.slot); }
-      else { const gh = cyl(0.015, 0.015, 1, MT.ghost, lg, 0, 0, 0); gh.castShadow = false; gh.userData.slot = lg.userData.slot; lg.userData.mesh = gh; lg.userData.L = 0.05; }
+      if (j.link) { const p = j.link, pp = PHY.partProps(p), al = /^al|ti/.test(p.metal), lm = (al ? L.alu() : /ti/.test(p.metal) ? L.paint(0xa7a08f) : L.steel).clone(); lm.userData = { own: true }; if (/ti/.test(p.metal)) lm.color.set(0xa7a08f); const Lb = Math.max(0.02, pp.L / 1000);
+        const mesh = P3.machinedLink(p, Lb, lm, { collar: L.alu(0x2d3238) }); lg.add(mesh); mesh.userData.link = true; lg.userData.mesh = mesh; lg.userData.Lb = Lb; lg.userData.mat = lm; lg.userData.L = Lb;
+        const st = tqState(j.ltq), pl = cyl((p.D || p.B || 40) / 1400 + 0.01, (p.D || p.B || 40) / 1400 + 0.01, 0.01, L.alu(0x2d3238), lg, 0, 0, 0); lg.userData.plate = pl; const bolts = new THREE.Group(); lg.add(bolts); lg.userData.bolts = bolts; boltRing(bolts, Math.min(8, j.lbolts.n), (p.D || p.B || 40) / 1400, 0.005, st, lg.userData.slot, 0.006); }
+      else { const gh = cyl(0.015, 0.015, 1, MT.ghost, lg, 0, 0, 0); gh.castShadow = false; lg.userData.mesh = gh; lg.userData.Lb = 1; lg.userData.L = 0.05; }
     });
-    // pinza
+    // pinza / utensile finale
     const eg = new THREE.Group(); eg.userData.slot = "eff"; arm.add(eg); R.eff = eg; const E = PHY.by(CAT.EFFECTORS, A.eff.id);
-    if (A.eff.mounted) { const m0 = /vac/.test(E.id) ? MT.black : /sp/.test(E.id) ? MT.blue : MT.dark; box(0.07, 0.05, 0.06, m0, eg, 0, 0.025, 0).userData.slot = "eff"; if (/vac/.test(E.id)) cyl(0.02, 0.03, 0.02, MT.black, eg, 0, E.L * 0.9, 0); else if (/sp/.test(E.id)) cyl(0.004, 0.004, E.L * 0.7, MT.steel, eg, 0, E.L * 0.6, 0); else { const fl = box(0.012, E.L * 0.6, 0.03, MT.steel, eg, -0.022, 0.05 + E.L * 0.3, 0), fr2 = box(0.012, E.L * 0.6, 0.03, MT.steel, eg, 0.022, 0.05 + E.L * 0.3, 0); fl.userData.slot = fr2.userData.slot = "eff"; eg.userData.fingers = [fl, fr2]; }
-      if (A.payload > 0) { const s = Math.cbrt(A.payload / 2700) * 0.9; const pl = box(Math.min(0.04, s), Math.min(0.12, s * 1.4), Math.min(0.05, s), MT.orange, eg, 0, 0.05 + E.L * 0.5, 0); pl.userData.slot = "eff"; }
-      boltRing(eg, A.eff.bolts.n, 0.022, 0.002, tqState(A.eff.tq), "eff"); }
-    else { const gh = box(0.07, Math.max(0.08, E.L), 0.06, MT.ghost, eg, 0, Math.max(0.08, E.L) / 2, 0); gh.castShadow = false; gh.userData.slot = "eff"; }
+    if (A.eff.mounted) { if (/vac/.test(E.id)) { rb(0.07, 0.03, 0.06, 0.006, L.alu(0x2d3238), eg, 0, 0.015, 0); cyl(0.006, 0.006, E.L * 0.8, L.steel, eg, 0, 0.03 + E.L * 0.4, 0); const cup = M(P3.lathe([[0.004, 0], [0.012, 0.004], [0.018, 0.01], [0.014, 0.014], [0.022, 0.02], [0.03, 0.026], [0.028, 0.03], [0.004, 0.03]], SEG), L.rubber, eg); cup.position.y = 0.03 + E.L * 0.75; }
+      else if (/sp/.test(E.id)) { cyl(0.03, 0.03, E.L * 0.6, L.paint(0x2b3138), eg, 0, E.L * 0.3, 0); cyl(0.031, 0.031, 0.01, L.steel, eg, 0, E.L * 0.1, 0); cyl(0.014, 0.01, E.L * 0.12, L.steel, eg, 0, E.L * 0.66, 0); cyl(0.004, 0.004, E.L * 0.3, L.steel, eg, 0, E.L * 0.85, 0); }
+      else { const gp = P3.gripper(E.L, { stroke: (E.stroke || 20) / 1000 }); eg.add(gp.g); eg.userData.fingers = gp.fingers; }
+      if (A.payload > 0) { const s = Math.cbrt(A.payload / 2700) * 0.9; const pl = rb(Math.min(0.04, s), Math.min(0.12, s * 1.4), Math.min(0.05, s), 0.003, L.paint(0xff7a2f), eg, 0, 0.05 + E.L * 0.5, 0); void pl; }
+      boltRing(eg, A.eff.bolts.n, 0.022, 0.002, tqState(A.eff.tq), "eff", 0.005); }
+    else { const gh = box(0.07, Math.max(0.08, E.L), 0.06, MT.ghost, eg, 0, Math.max(0.08, E.L) / 2, 0); gh.castShadow = false; }
     eg.userData.L = A.eff.mounted ? E.L : 0;
-    // quadro: scheda della Tavola, driver e alimentatore
+    // quadro: la tua scheda, driver con dissipatori e display, alimentatore forato, morsetti su guida DIN
     const bc = benchCtx();
-    if (A.ctrl.mounted) { const pcbM = A.ctrl.src === "bench" ? mat(new THREE.Color(bc && bc.color || "#1f7a3a"), 0.1, 0.6) : MT.blue; const brd = box(0.12, 0.08, 0.004, pcbM, cabIn, -0.15, 0.3, 0); brd.userData.slot = "ctrl"; for (let k = 0; k < 4; k++) box(0.014, 0.014, 0.004, MT.black, cabIn, -0.19 + k * 0.026, 0.3, 0.004); if (A.ctrl.src === "bench" && bc && (bc.cold || bc.bridge)) box(0.01, 0.01, 0.006, BOLT.warn, cabIn, -0.1, 0.27, 0.004); }
-    A.J.forEach((j, i) => { const D = PHY.by(CAT.DRIVERS, j.driver), ac = String(D.V[0]).indexOf("ac") === 0; const d = box(ac ? 0.045 : 0.035, ac ? 0.12 : 0.08, 0.06, ac ? MT.black : MT.dark, cabIn, -0.04 + i * 0.05, 0.12, -0.04); d.userData.slot = "J" + (i + 1); d.userData.drv = i; });
-    const PS = PHY.by(CAT.PSUS, A.psu); if (PS && PS.V) box(0.1, 0.06, 0.08, mat(0xb8c0c8, 0.9, 0.35), cabIn, 0.16, 0.06, -0.05);
+    if (A.ctrl.mounted) { const col = A.ctrl.src === "bench" ? new THREE.Color(bc && bc.color || "#1f7a3a") : new THREE.Color(0x2a62c9), pcbM = T.phys ? new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.4, clearcoat: 0.9, clearcoatRoughness: 0.12 }) : mat(col, 0.1, 0.6);
+      const brd = rb(0.12, 0.08, 0.003, 0.002, pcbM, cabIn, -0.15, 0.3, -0.17); brd.userData.slot = "ctrl"; for (let k = 0; k < 4; k++) rb(0.014, 0.014, 0.004, 0.001, L.plastic(0x18191c, 0.5), cabIn, -0.19 + k * 0.026, 0.31, -0.166); for (let k = 0; k < 3; k++) cyl(0.004, 0.004, 0.01, L.paint(0x1c2a5a), cabIn, -0.19 + k * 0.012, 0.28, -0.163).rotation.x = Math.PI / 2; box(0.1, 0.006, 0.008, L.plastic(0x141516, 0.5), cabIn, -0.15, 0.335, -0.164);
+      [0, 1].forEach(k => { const led = box(0.004, 0.004, 0.003, mat(0x111111, 0, 0.5, { emissive: k ? 0x3dff6a : 0xff9a2f, emissiveIntensity: 6 }), cabIn, -0.11 + k * 0.01, 0.27, -0.167); led.castShadow = false; });
+      if (A.ctrl.src === "bench" && bc && (bc.cold || bc.bridge)) box(0.01, 0.01, 0.006, BOLT.warn, cabIn, -0.1, 0.27, -0.164); }
+    A.J.forEach((j, i) => { const D = PHY.by(CAT.DRIVERS, j.driver), ac = String(D.V[0]).indexOf("ac") === 0, w = ac ? 0.045 : 0.035, h = ac ? 0.12 : 0.08, x = -0.04 + i * 0.05, y = 0.12; const d = new THREE.Group(); d.position.set(x, y, -0.14); cabIn.add(d); d.userData.slot = "J" + (i + 1); d.userData.drv = i;
+      rb(w, h, 0.06, 0.003, ac ? L.plastic(0x1b1c1f, 0.45) : L.alu(0x1d1f22), d); if (T.detail) { const fins = []; for (let k = 0; k < 5; k++) fins.push(new THREE.BoxGeometry(0.002, h * 0.9, 0.05).translate(-w / 2 - 0.003 - k * 0.0001, 0, 0)); }
+      const disp = box(w * 0.6, 0.012, 0.002, mat(0x050505, 0, 0.3, { emissive: ac ? 0x3dff9a : 0x2a8cff, emissiveIntensity: 4 }), d, 0, h * 0.3, 0.031); disp.castShadow = false; box(w * 0.8, 0.014, 0.012, L.plastic(0x1f9a4a, 0.5), d, 0, -h * 0.38, 0.034); });
+    const PS = PHY.by(CAT.PSUS, A.psu); if (PS && PS.V) { const ps = new THREE.Group(); ps.position.set(0.16, 0.07, -0.14); cabIn.add(ps); rb(0.1, 0.06, 0.08, 0.002, L.zinc, ps); if (T.detail) { const hm = new THREE.InstancedMesh(new THREE.CircleGeometry(0.0018, 6), new THREE.MeshBasicMaterial({ color: 0x0a0a0a }), 60), m4 = new THREE.Matrix4(); for (let k = 0; k < 60; k++) { m4.makeTranslation(-0.042 + (k % 12) * 0.0076, 0.031, -0.03 + Math.floor(k / 12) * 0.012); m4.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2)); hm.setMatrixAt(k, m4); } ps.add(hm); } box(0.08, 0.012, 0.01, L.plastic(0x141516, 0.5), ps, 0, -0.02, 0.044); }
+    for (let k = 0; k < 10; k++) box(0.006, 0.03, 0.03, L.plastic(k % 3 === 2 ? 0xf5c542 : k % 3 ? 0x2a62c9 : 0x8a8f96, 0.5), cabIn, -0.06 + k * 0.0075 + 0.09, 0.3, -0.16);
     estopBtn.material.color.set(A.estop ? 0xd8262b : 0x553333); estopG.visible = true;
-    pose(currentQ()); buildCables();
+    buildCables(); pose(currentQ()); if (cs) cs.dirty = true;
   }
   function currentQ() { if (S.sim && S.sim.frames.length) return frameAt(S.simT).q; return PHY.poses(A.axes)[0]; }
   function frameAt(t) { const fr = S.sim.frames, k = Math.max(0, Math.min(fr.length - 1, Math.round(t / S.sim.dt))); return fr[k]; }
@@ -149,26 +182,30 @@ export function mountAssembly(el, env) {
   function pose(q, fr) {
     const K = PHY.fk(A, q), kinds = PHY.KINDS[A.axes], yaw = q[0] || 0, side = V3(Math.sin(yaw), 0, Math.cos(yaw));
     R.joints.forEach((g, i) => { const p = K.joints[i], drop = (S.drop["J" + (i + 1)] || 0) * 0.35; g.position.set(p[0], p[1] + drop, p[2]); const kd = kinds[i]; let ax = kd === "yaw" ? UP : kd === "pitch" ? side : V3(...K.links[i].d); if (i === 0) ax = UP; g.quaternion.setFromUnitVectors(UP, ax.clone().normalize()); if (i === 0) g.position.y = 0.12 + drop; });
-    R.links.forEach((g, i) => { const l = K.links[i], d = V3(...l.d).normalize(), drop = (S.drop["L" + (i + 1)] || 0) * 0.35, L = Math.max(0.01, l.L); const h0 = R.joints[i] ? R.joints[i].userData.hl / 2 : 0; g.position.set((l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2 + drop + (i === 0 ? h0 * 0.5 : 0), (l.a[2] + l.b[2]) / 2); g.quaternion.setFromUnitVectors(UP, d); const m = g.userData.mesh; if (m) m.scale.set(1, L, 1); if (g.userData.plate) g.userData.plate.position.y = -L / 2; if (g.userData.bolts) g.userData.bolts.position.y = -L / 2; });
-    const eg = R.eff; if (eg) { const last = K.links[K.links.length - 1], d = V3(...(last ? last.d : [1, 0, 0])).normalize(), e = K.joints[K.joints.length - 1], drop = (S.drop.eff || 0) * 0.35; eg.position.set(e[0], e[1] + drop, e[2]); eg.quaternion.setFromUnitVectors(UP, d); if (eg.userData.fingers && fr) { const o = 0.022 - 0.008 * (0.5 + 0.5 * Math.sin(fr.t * 2)); eg.userData.fingers[0].position.x = -o; eg.userData.fingers[1].position.x = o; } }
+    R.links.forEach((g, i) => { const l = K.links[i], d = V3(...l.d).normalize(), drop = (S.drop["L" + (i + 1)] || 0) * 0.35, L = Math.max(0.01, l.L); const h0 = R.joints[i] ? R.joints[i].userData.hl / 2 : 0; g.position.set((l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2 + drop + (i === 0 ? h0 * 0.5 : 0), (l.a[2] + l.b[2]) / 2); g.quaternion.setFromUnitVectors(UP, d); const m = g.userData.mesh; if (m) m.scale.set(1, L / (g.userData.Lb || 1), 1); if (g.userData.plate) g.userData.plate.position.y = -L / 2; if (g.userData.bolts) g.userData.bolts.position.y = -L / 2; });
+    const eg = R.eff; if (eg) { const last = K.links[K.links.length - 1], d = V3(...(last ? last.d : [1, 0, 0])).normalize(), e = K.joints[K.joints.length - 1], drop = (S.drop.eff || 0) * 0.35; eg.position.set(e[0], e[1] + drop, e[2]); eg.quaternion.setFromUnitVectors(UP, d); if (eg.userData.fingers) { const o = fr ? 0.006 * (0.5 + 0.5 * Math.sin(fr.t * 2)) : 0.006; eg.userData.fingers[0].position.x = -o; eg.userData.fingers[1].position.x = o; } }
     const base = R.base; if (base) base.position.y = (S.drop.base || 0) * 0.35;
     // baricentro
     const L = PHY.loads(A, q, q.map(() => 0), ctxPhy()); comM.visible = comLine.visible = S.com && L.mass > 0; if (L.mass > 0) { comM.position.set(L.com[0], L.com[1], L.com[2]); comLine.geometry.setFromPoints([comM.position.clone(), V3(L.com[0], 0.002, L.com[2])]); comLine.computeLineDistances(); }
     // colori: sforzi o temperatura
     const r = S.res; R.links.forEach((g, i) => { const lm = g.userData.mat; if (!lm) return; if (S.stress && r) { const li = r.links.find(x => x.k === i), sf = li ? li.sf : Infinity; lm.color.set(sf < 1 ? 0xff3b3b : sf < 2.5 ? 0xf5c542 : sf < 6 ? 0x3ddc84 : 0x5ab0ff); lm.metalness = 0.2; } else { const al = /^al|ti/.test(A.J[i].link.metal); lm.color.set(al ? 0xd5dbe1 : 0x9aa3ab); lm.metalness = 1; } });
     R.joints.forEach((g, i) => { const t = fr ? fr.temp[i] : 25, h = Math.max(0, Math.min(1, (t - 30) / 70)); g.traverse(o => { if (o.userData.heat && o.material && o.material.emissive) { if (!o.material.userData.own) { o.material = o.material.clone(); o.material.userData.own = true; } o.material.emissive.setRGB(h * 0.9, h * 0.18, 0); } }); });
+    updateCables();
     return K;
   }
   function buildCables() {
-    cables.children.forEach(c => c.geometry.dispose()); cables.clear(); const r = S.res || evalNow();
-    A.J.forEach((j, i) => { if (!j.mounted || !j.wire || !j.wire.mot) return; const g = R.joints[i]; if (!g) return; const src = cab.localToWorld(V3(-0.04 + (+j.wire.mot.slice(1) - 1) * 0.05, 0.08, 0.06)), dst = g.position.clone(); const bad = r.issues.some(x => x.slot === "J" + (i + 1) && x.cat === "cablaggio" && x.sev === "err");
-      const mid = V3((src.x + dst.x) / 2, Math.max(0.03, Math.min(src.y, dst.y) - 0.05), (src.z + dst.z) / 2 + 0.1); const curve = new THREE.CatmullRomCurve3([src, V3(src.x + 0.05, 0.01, src.z + 0.2), mid, V3(dst.x, Math.max(0.05, dst.y - 0.05), dst.z), dst]);
-      const t = new THREE.Mesh(new THREE.TubeGeometry(curve, lite ? 18 : 32, 0.0045, 5, false), mat(bad ? 0xff5a5f : j.wire.pow === "mains" ? 0x1d1f22 : 0xff7a2f, 0.1, 0.6, bad ? { emissive: 0x5a0a0a } : {})); cables.add(t); });
+    flex.forEach(c => c.dispose()); flex = []; cables.clear(); chain = null; const r = S.res || evalNow(), L = LIB();
+    A.J.forEach((j, i) => { if (!j.mounted || !j.wire || !j.wire.mot) return; const g = R.joints[i]; if (!g) return; const bad = r.issues.some(x => x.slot === "J" + (i + 1) && x.cat === "cablaggio" && x.sev === "err");
+      const m = bad ? mat(0xff5a5f, 0.1, 0.5, { emissive: 0x5a0a0a }) : L.cable(j.wire.pow === "mains" ? 0x1d1f22 : 0xff7a2f), fc = new P3.FlexCable(0.0045, m, T.detail >= 2 ? 30 : 18, T.detail ? 7 : 5); fc.i = i; fc.k = +j.wire.mot.slice(1) - 1; cables.add(fc.mesh); flex.push(fc); });
+    if (A.base.mounted && T.detail) { chain = new P3.DragChain(48, 0.035, 0.022, 0.016, L.plastic(0x1b1c1e, 0.55)); cables.add(chain.mesh); const pts = [], z = -0.3, add = (x, y) => pts.push(V3(x, y, z)); for (let k = 0; k <= 12; k++) add(-0.6 + k * 0.035, 0.012); for (let k = 1; k <= 12; k++) { const a = -Math.PI / 2 + k / 12 * Math.PI; add(-0.18 + Math.cos(a) * 0.05, 0.062 + Math.sin(a) * 0.05); } for (let k = 1; k <= 6; k++) add(-0.18 - k * 0.03, 0.112); chain.set(pts, V3(0, 0, 1)); }
+    updateCables();
   }
+  const tA = V3(0, 0, 0), tB = V3(0, 0, 0), dA = V3(0, 0, 1), dB = V3(0, -1, 0);
+  function updateCables() { flex.forEach(fc => { const g = R.joints[fc.i]; if (!g) return; tA.copy(cab.localToWorld(V3(-0.04 + fc.k * 0.05, 0.08, 0.0))); g.updateMatrixWorld(); tB.set(0, (g.userData.motorEnd || -0.05) * 0.85, (g.userData.rr || 0.03) * 0.6); g.localToWorld(tB); dB.set(0, 0, 1).transformDirection(g.matrixWorld); fc.update(tA, tB, dA, dB, 0.08, 0.002); }); if (cs) cs.dirty = true; }
   /* ---------- simulazione ---------- */
   function runSim() { evalNow(); S.sim = PHY.simulate(A, ctxPhy(), {}); S.simT = 0; S.play = true; S.lastEvent = -1; trailK = 0; trail.geometry.setDrawRange(0, 0); simPanel(); hud(); return S.sim; }
   function seek(t) { if (!S.sim) return; S.simT = Math.max(0, Math.min(S.sim.tEnd, t)); applySim(true); }
-  function applySim(force) { const fr = frameAt(S.simT); pose(fr.q, fr); if (frameCount % 3 === 0 || force) buildCables();
+  function applySim(force) { const fr = frameAt(S.simT); pose(fr.q, fr);
     const tp = fr.tip; if (trailK < trailN) { trailPos.set([tp[0], tp[1], tp[2]], trailK * 3); trailK++; } else { trailPos.copyWithin(0, 3); trailPos.set([tp[0], tp[1], tp[2]], (trailN - 1) * 3); } trail.geometry.attributes.position.needsUpdate = true; trail.geometry.setDrawRange(0, trailK);
     const evs = S.sim.events; for (let k = S.lastEvent + 1; k < evs.length; k++) { if (evs[k].time <= S.simT) { S.lastEvent = k; if (evs[k].sev === "err") S.flash = 1; $("#asHint").textContent = (evs[k].sev === "err" ? "⛔ " : "⚠️ ") + f(evs[k].time, 1) + " s · " + evs[k].t; } else break; }
     if (frameCount % 6 === 0 || force) simBars(fr); }
@@ -270,7 +307,7 @@ export function mountAssembly(el, env) {
   let fly = null;
   function flyTo(p, t) { if (rm || test) { camera.position.copy(p); controls.target.copy(t); controls.update(); return; } fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: p, t1: t, k: 0 }; }
   function overview() { const k = Math.max(1, 1.05 / Math.max(0.4, camera.aspect)); flyTo(V3(1.0 * k, 0.9 * k, 1.4 * k), V3(0.1, 0.32, 0)); }
-  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); camera.aspect = w / h; camera.updateProjectionMatrix(); pipe.setSize(w, h); }
   const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null; if (ro) ro.observe(stage);
   let raf = 0, last = 0, frameCount = 0;
   function frame(dt) {
@@ -278,9 +315,9 @@ export function mountAssembly(el, env) {
     let dropping = false; Object.keys(S.drop).forEach(k => { if (S.drop[k] > 0) { S.drop[k] = Math.max(0, S.drop[k] - dt * 2.2); dropping = true; } });
     if (S.sim && S.play) { S.simT += dt; if (S.simT >= S.sim.tEnd) { S.simT = S.sim.tEnd; S.play = false; simPanel(); } applySim(false); if (frameCount % 10 === 0) hud(); } else if (dropping) pose(currentQ());
     if (S.flash > 0) { S.flash = Math.max(0, S.flash - dt * 1.5); scene.background.setRGB(0.08 + S.flash * 0.25, 0.09, 0.105); }
-    controls.update(); renderer.render(scene, camera);
+    controls.update(); if (cs) cs.update(); pipe.setFocus(camera.position.distanceTo(controls.target)); const t0 = performance.now(); pipe.render(dt); S.ms = performance.now() - t0;
   }
-  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; frame(dt); raf = requestAnimationFrame(tick); }
+  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; gov.tick(dt); frame(dt); raf = requestAnimationFrame(tick); }
   resize(); evalNow(); build(); overview(); panel();
   function refresh() { evalNow(); build(); panel(); }
   return {
@@ -293,7 +330,8 @@ export function mountAssembly(el, env) {
       setLink(i, key) { A.J[i].link = linkFrom(key); A.J[i].ltq = null; save(); evalNow(); build(); panel(); },
       mountAll() { slotList().forEach(s => { if (!mountedSlot(s)) mount(s, true); }); },
       tightenAll() { return slotList().filter(s => slotBolts(s)).map(s => { const rc = recommend(s); return rc ? tighten(s, rc.tool, rc.opt) : null; }); },
-      tab(t) { S.tab = t; panel(); }, inventory, frame(n) { for (let i = 0; i < (n || 1); i++) frame(0.05); }, render() { frame(0.016); }, view: overview },
-    dispose() { this.pause(); if (ro) ro.disconnect(); pmrem.dispose(); renderer.dispose(); }
+      tab(t) { S.tab = t; panel(); }, inventory, frame(n) { for (let i = 0; i < (n || 1); i++) frame(0.05); }, render() { frame(0.016); }, view: overview,
+      gfx: () => ({ tier: T.id, passes: pipe.passes.slice(), ms: S.ms || 0, contact: !!cs, shadow: renderer.shadowMap.enabled, dpr: renderer.getPixelRatio() }), stats: () => GFX.pixelStats(renderer), setTier(id) { GFX.setSetting(id); } },
+    dispose() { this.pause(); offGfx(); if (ro) ro.disconnect(); flex.forEach(c => c.dispose()); if (cs) cs.dispose(); pipe.dispose(); GFX.disposeEnv(renderer); renderer.dispose(); }
   };
 }

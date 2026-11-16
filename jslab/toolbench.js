@@ -2,8 +2,10 @@
 // Ogni utensile ha dati reali (js/tools.js → window.TLS): scegli utensile, inserto/misura, coppia o forza e usalo
 // sul pezzo. L'esito (vite serrata, lenta, snervata, impronta spanata, rischio) viene spiegato e salvato.
 import * as THREE from "../vendor/three.module.min.js";
-import { OrbitControls, RoomEnvironment } from "../vendor/three-addons.min.js";
-import * as TX from "../js3d/textures.js?v=5";
+import { OrbitControls } from "../vendor/three-fx.min.js";
+import * as GFX from "../js3d/gfx.js?v=6";
+import * as P3 from "../js3d/parts3d.js?v=6";
+import * as TX from "../js3d/textures.js?v=6";
 
 const SKEY = "xentriq-braccio-lab-tools-v1";
 export function loadToolState() { try { return JSON.parse(localStorage.getItem(SKEY) || "null") || {}; } catch (e) { return {}; } }
@@ -21,27 +23,32 @@ export function mountTools(el, env) {
       <div class="tb-tg" id="tbG">${TLS.GROUPS.map(g => `<button type="button" class="chip" data-tbg="${g.id}">${esc(g.n)}</button>`).join("")}</div><div class="tb-cat" id="tbCat"></div>
       <h3>Registro</h3><div id="tbLog"></div></div></div>`;
   const $ = s => el.querySelector(s), canvas = $("#tbCv"), stage = $("#tbStage");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lite, preserveDrawingBuffer: test, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, test ? 1 : 1.5)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = !lite;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x15181c);
-  const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5;
+  let T = GFX.tier(); const LIB = () => GFX.materials(T);
+  const renderer = GFX.makeRenderer(canvas, { test, tier: T });
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x15181c); scene.environment = GFX.envMap(renderer, "workshop"); scene.environmentIntensity = 0.7;
   const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 40); const controls = new OrbitControls(camera, canvas); controls.enableDamping = !rm; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 0.12; controls.maxDistance = 5;
-  scene.add(new THREE.HemisphereLight(0xeef2ff, 0x2a2622, 0.7)); const sun = new THREE.DirectionalLight(0xfff2e0, 1.6); sun.position.set(1.2, 2.6, 1.6); sun.castShadow = !lite; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -1.5, right: 1.5, top: 1.5, bottom: -1.5 }); scene.add(sun);
-  const lamp = new THREE.PointLight(0xfff0d8, 1.2, 3); lamp.position.set(0, 1.7, 0.2); scene.add(lamp);
-  const SEG = lite ? 10 : 20, Y = 0.9;
-  const mat = (c, m, r) => new THREE.MeshStandardMaterial({ color: c, metalness: m == null ? 0.2 : m, roughness: r == null ? 0.5 : r });
-  const steel = mat(0xb9c0c7, 1, 0.3), dark = mat(0x2b2f36, 0.3, 0.5), black = mat(0x141517, 0.2, 0.6), chrome = mat(0xe6eaee, 1, 0.12), brass = mat(0xc9a24a, 1, 0.3);
-  function M(geo, m, p, x, y, z) { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = !lite; o.position.set(x || 0, y || 0, z || 0); (p || scene).add(o); return o; }
+  scene.add(new THREE.HemisphereLight(0xeef2ff, 0x2a2622, 0.3)); const sun = new THREE.DirectionalLight(0xfff2e0, 1.9); sun.position.set(1.2, 2.6, 1.6); scene.add(sun);
+  const lamp = new THREE.PointLight(0xfff0d8, 1.4, 3); lamp.position.set(0, 1.7, 0.2); scene.add(lamp);
+  let pipe = null, cs = null; const SEG = Math.max(10, Math.round(20 * T.seg)), Y = 0.9;
+  function setupTier() { GFX.setupShadow(sun, T, 1.4, { far: 8, bias: -0.0004, normalBias: 0.012 }); if (pipe) pipe.setTier(T); else pipe = new GFX.Pipeline(renderer, scene, camera, { tier: T, test, ao: { radius: 0.05, distanceFallOff: 1, thickness: 1 }, bloom: [0.4, 0.4, 5], dof: true, focus: 1.2, aperture: 0.006, maxblur: 0.006 }); if (cs) cs.dispose(); cs = T.contact ? new GFX.ContactShadow(renderer, scene, { w: 1.9, d: 0.8, y: Y + 0.001, res: T.csRes, far: 0.35, blur: 2, opacity: 0.8, every: 3 }) : null; }
+  setupTier();
+  const gov = new GFX.Governor(n => { env.toast && env.toast("Grafica ridotta a " + GFX.TIERS[n].n + " per restare fluida"); });
+  const offGfx = GFX.onChange(id => { T = GFX.TIERS[id]; setupTier(); const s = el.querySelector("#tbQ2"); if (s) s.value = GFX.setting(); });
+  { const tp = el.querySelector(".sp-top"); if (tp) tp.insertAdjacentHTML("beforeend", GFX.selectHtml("tbQ2", "gfx-q")); }
+  el.addEventListener("change", e => { const t = e.target; if (t.getAttribute && t.getAttribute("data-gfx") === "q") GFX.setSetting(t.value); });
+  const mat = (c, m, r) => (m || 0) < 0.5 && T.phys ? new THREE.MeshPhysicalMaterial({ color: c, metalness: m == null ? 0.2 : m, roughness: r == null ? 0.5 : r, clearcoat: 0.45, clearcoatRoughness: 0.3 }) : new THREE.MeshStandardMaterial({ color: c, metalness: m == null ? 0.2 : m, roughness: r == null ? 0.5 : r });
+  const steel = LIB().steel, dark = LIB().paint(0x2b2f36), black = LIB().plastic(0x141517, 0.55), chrome = LIB().chrome, brass = LIB().brass;
+  function M(geo, m, p, x, y, z) { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = T.shadow > 0; o.position.set(x || 0, y || 0, z || 0); (p || scene).add(o); return o; }
   const box = (w, h, d, m, p, x, y, z) => M(new THREE.BoxGeometry(w, h, d), m, p, x, y, z), cyl = (r1, r2, h, m, p, x, y, z, s) => M(new THREE.CylinderGeometry(r1, r2, h, s || SEG), m, p, x, y, z);
   // stanza e banco
-  const floor = M(new THREE.PlaneGeometry(8, 8), new THREE.MeshStandardMaterial({ map: TX.concrete(31).map, roughness: 0.9 })); floor.rotation.x = -Math.PI / 2;
+  const fl = GFX.texSet("concrete", T, [3, 3]), wd = GFX.texSet("wood", T, [1.6, 0.7]), wl = GFX.texSet("wall", T, [2, 1]); const floor = M(new THREE.PlaneGeometry(8, 8), new THREE.MeshStandardMaterial({ map: fl.map, normalMap: fl.normal || null, roughnessMap: fl.rough || null, roughness: 1 })); floor.rotation.x = -Math.PI / 2; floor.castShadow = false;
   const wood = (() => { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d"); g.fillStyle = "#a9773f"; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 90; i++) { g.strokeStyle = `rgba(70,40,15,${0.05 + Math.random() * 0.12})`; g.beginPath(); const y = Math.random() * 256; g.moveTo(0, y); g.bezierCurveTo(80, y + 6, 170, y - 6, 256, y + 3); g.stroke(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); return t; })();
-  box(1.9, 0.05, 0.8, new THREE.MeshStandardMaterial({ map: wood, roughness: 0.7 }), null, 0, Y - 0.025, 0);
+  M(P3.rbox(1.9, 0.05, 0.8, 0.006), T.detail ? new THREE.MeshPhysicalMaterial({ map: wd.map, normalMap: wd.normal || null, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.5 }) : new THREE.MeshStandardMaterial({ map: wood, roughness: 0.7 }), null, 0, Y - 0.025, 0);
   [[-0.9, -0.35], [0.9, -0.35], [-0.9, 0.35], [0.9, 0.35]].forEach(([x, z]) => box(0.06, Y - 0.05, 0.06, dark, null, x, (Y - 0.05) / 2, z));
   box(1.8, 0.03, 0.7, dark, null, 0, 0.25, 0);
   const peg = (() => { const c = document.createElement("canvas"); c.width = 512; c.height = 256; const g = c.getContext("2d"); g.fillStyle = "#c7b18a"; g.fillRect(0, 0, 512, 256); g.fillStyle = "#3b3226"; for (let x = 8; x < 512; x += 16) for (let y = 8; y < 256; y += 16) { g.beginPath(); g.arc(x, y, 2.6, 0, 7); g.fill(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
   box(1.9, 0.9, 0.02, new THREE.MeshStandardMaterial({ map: peg, roughness: 0.8 }), null, 0, Y + 0.55, -0.41);
-  box(4, 3, 0.05, mat(0x3a3f45, 0, 0.9), null, 0, 1.5, -0.45);
+  box(4, 3, 0.05, new THREE.MeshStandardMaterial({ map: wl.map, normalMap: wl.normal || null, roughness: 0.85 }), null, 0, 1.5, -0.45).castShadow = false;
   // morsa da banco e trapano a colonna (fissi)
   const vise = new THREE.Group(); vise.position.set(0.72, Y, 0.12); scene.add(vise); box(0.16, 0.05, 0.2, mat(0x1d4fa3, 0.4, 0.4), vise, 0, 0.025, 0); box(0.14, 0.09, 0.04, mat(0x1d4fa3, 0.4, 0.4), vise, 0, 0.1, -0.05); box(0.14, 0.09, 0.04, mat(0x1d4fa3, 0.4, 0.4), vise, 0, 0.1, 0.05); cyl(0.008, 0.008, 0.22, steel, vise, 0, 0.07, 0.17).rotation.x = Math.PI / 2;
   const press = new THREE.Group(); press.position.set(-0.75, Y, -0.22); scene.add(press); box(0.24, 0.03, 0.3, dark, press, 0, 0.015, 0.02); cyl(0.022, 0.022, 0.62, chrome, press, 0, 0.32, -0.1); box(0.14, 0.14, 0.24, mat(0x2a7a4a, 0.3, 0.4), press, 0, 0.58, 0.0); const chuck = cyl(0.016, 0.01, 0.06, steel, press, 0, 0.47, 0.07); const bit = cyl(0.0034, 0.0034, 0.07, mat(0x9aa3ab, 1, 0.3), press, 0, 0.41, 0.07, 8);
@@ -50,7 +57,7 @@ export function mountTools(el, env) {
   function toolMesh(t) {
     const g = new THREE.Group(), hc = mat(HANDLE[t.g] || 0xe8452c, 0.1, 0.45);
     switch (t.icon) {
-      case "screwdriver": cyl(0.014, 0.012, 0.1, hc, g, 0, 0.05, 0); cyl(0.0035, 0.0035, 0.12, chrome, g, 0, 0.16, 0, 8); cyl(0.0035, 0.0012, 0.012, chrome, g, 0, 0.226, 0, 8); break;
+      case "screwdriver": M(P3.lathe([[0, 0], [0.011, 0], [0.0135, 0.008], [0.014, 0.03], [0.0125, 0.06], [0.0135, 0.085], [0.011, 0.1], [0.005, 0.104], [0, 0.104]], SEG), hc, g); if (T.detail) M(P3.lathe([[0.0141, 0.012], [0.0146, 0.03], [0.0131, 0.06], [0.0141, 0.08]], SEG), black, g); cyl(0.0035, 0.0035, 0.12, chrome, g, 0, 0.16, 0, 8); cyl(0.0035, 0.0012, 0.012, chrome, g, 0, 0.226, 0, 8); break;
       case "hexkey": box(0.006, 0.12, 0.006, mat(0x222, 0.8, 0.4), g, 0, 0.06, 0); box(0.035, 0.006, 0.006, mat(0x222, 0.8, 0.4), g, 0.017, 0.12, 0); break;
       case "wrench": box(0.016, 0.17, 0.004, chrome, g, 0, 0.085, 0); M(new THREE.TorusGeometry(0.012, 0.004, 6, SEG), chrome, g, 0, 0.18, 0); box(0.026, 0.02, 0.004, chrome, g, 0, -0.006, 0); break;
       case "socket": box(0.016, 0.16, 0.008, chrome, g, 0, 0.08, 0); cyl(0.016, 0.016, 0.012, chrome, g, 0, 0.17, 0).rotation.x = Math.PI / 2; for (let i = 0; i < 4; i++) cyl(0.007 + i * 0.002, 0.007 + i * 0.002, 0.025, chrome, g, 0.04 + i * 0.03, 0.05, 0); break;
@@ -113,7 +120,8 @@ export function mountTools(el, env) {
   // scintille e trucioli
   const NP = lite ? 120 : 300, pGeo = new THREE.BufferGeometry(), pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP); pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
   const sparks = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xffb347, size: 0.006, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(sparks);
-  function burst(p, n, col, sp) { sparks.material.color.set(col); for (let i = 0, k = 0; i < NP && k < n; i++) if (pLife[i] <= 0) { k++; pPos[i * 3] = p.x; pPos[i * 3 + 1] = p.y; pPos[i * 3 + 2] = p.z; pVel[i * 3] = (Math.random() - 0.5) * sp; pVel[i * 3 + 1] = Math.random() * sp; pVel[i * 3 + 2] = (Math.random() * 0.5 + 0.5) * sp; pLife[i] = 0.4 + Math.random() * 0.6; } }
+  const fx = new GFX.Sparks(Math.round(900 * T.parts), { size: 0.006, streak: 0.018, floor: Y, bounce: 0.3 }); scene.add(fx.obj); let haze = 0, hazeP = new THREE.Vector3();
+  function burst(p, n, col, sp) { if (col === 0xffb347) { fx.emit([p.x, p.y, p.z], [0, 0.55, 0.9], 0.55, sp * 1.6, Math.round(n * 3 * T.parts) + 1, 0.55, 1); haze = 0.35; hazeP.copy(p); return; } sparks.material.color.set(col); for (let i = 0, k = 0; i < NP && k < n; i++) if (pLife[i] <= 0) { k++; pPos[i * 3] = p.x; pPos[i * 3 + 1] = p.y; pPos[i * 3 + 2] = p.z; pVel[i * 3] = (Math.random() - 0.5) * sp; pVel[i * 3 + 1] = Math.random() * sp; pVel[i * 3 + 2] = (Math.random() * 0.5 + 0.5) * sp; pLife[i] = 0.4 + Math.random() * 0.6; } }
   /* ---------- camera ---------- */
   let fly = null; const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
   function flyTo(p, t) { if (rm || test) { camera.position.copy(p); controls.target.copy(t); controls.update(); return; } fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: p, t1: t, k: 0 }; }
@@ -192,17 +200,18 @@ export function mountTools(el, env) {
   el.addEventListener("change", e => { const t = e.target; if (t.hasAttribute("data-tsel")) { selectTarget(t.value); return; } const k = t.getAttribute("data-to"), pp = t.getAttribute("data-ppe"), o = S.o[S.tool] = S.o[S.tool] || {};
     if (pp) { o.ppe = o.ppe || {}; o.ppe[pp] = t.checked; save(); return; } if (!k) return; o[k] = t.type === "checkbox" ? t.checked : (isNaN(+t.value) ? t.value : +t.value); save(); panel(); });
   el.addEventListener("input", e => { const t = e.target; if (t.id === "tbQ") { S.q = t.value; catalog(); return; } const k = t.getAttribute("data-to"); if (k && t.type === "range") { const o = S.o[S.tool] = S.o[S.tool] || {}; o[k] = +t.value; const b2 = t.previousElementSibling && t.previousElementSibling.querySelector("b"); if (b2) b2.textContent = k === "torque" ? f(o[k], 1) + " N·m" : k === "force" ? Math.round(o[k] * 100) + "%" : k === "clutch" ? (o[k] >= 22 ? "foratura" : o[k]) : k === "temp" ? o[k] + " °C" : o[k]; save(); } });
-  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); camera.aspect = w / h; camera.updateProjectionMatrix(); pipe.setSize(w, h); }
   const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null; if (ro) ro.observe(stage);
   let raf = 0, last = 0;
-  function frame(dt) { if (fly) { fly.k = Math.min(1, fly.k + dt / 0.8); const e = fly.k * fly.k * (3 - 2 * fly.k); camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e); if (fly.k >= 1) fly = null; } controls.update(); animStep(dt); sparksStep(dt); Object.values(tgObj).forEach(g => { if (g.userData.ring.material.opacity > 0 && !rm) g.userData.ring.scale.setScalar(1 + 0.15 * Math.sin(performance.now() / 250)); }); renderer.render(scene, camera); }
-  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; frame(dt); raf = requestAnimationFrame(tick); }
+  function frame(dt) { if (fly) { fly.k = Math.min(1, fly.k + dt / 0.8); const e = fly.k * fly.k * (3 - 2 * fly.k); camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e); if (fly.k >= 1) fly = null; } controls.update(); animStep(dt); sparksStep(dt); fx.update(dt); haze = Math.max(0, haze - dt); pipe.setHaze(haze > 0 ? hazeP : null, haze * 2.5, 0.1); Object.values(tgObj).forEach(g => { if (g.userData.ring.material.opacity > 0 && !rm) g.userData.ring.scale.setScalar(1 + 0.15 * Math.sin(performance.now() / 250)); }); if (cs) cs.update(); pipe.setFocus(camera.position.distanceTo(controls.target)); const t0 = performance.now(); pipe.render(dt); S.ms = performance.now() - t0; }
+  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; gov.tick(dt); frame(dt); raf = requestAnimationFrame(tick); }
   camera.position.set(0, Y + 0.85, 1.45); controls.target.set(0, Y + 0.2, -0.05); controls.update(); resize(); highlight(); panel(); catalog(); log();
   return {
     resume() { S.run = true; resize(); last = 0; if (!raf) raf = requestAnimationFrame(tick); },
     pause() { S.run = false; if (raf) cancelAnimationFrame(raf); raf = 0; },
     ctx() { const t = tool(), tg = target(); return { tool: t.n, target: tg.n, opt: S.o[t.id] || {}, last: S.res ? { sev: S.res.sev, t: S.res.t, why: S.res.why, fix: S.res.fix } : null, stats: S.stats, damaged: Object.keys(S.dmg).length }; },
-    test: { S, selectTool, selectTarget, use, setOpt(k, v) { const o = S.o[S.tool] = S.o[S.tool] || {}; o[k] = v; panel(); }, frame(n) { for (let i = 0; i < (n || 1); i++) frame(0.05); }, render() { frame(0.016); }, focus: focusTarget },
-    dispose() { this.pause(); if (ro) ro.disconnect(); pmrem.dispose(); renderer.dispose(); }
+    test: { S, selectTool, selectTarget, use, setOpt(k, v) { const o = S.o[S.tool] = S.o[S.tool] || {}; o[k] = v; panel(); }, frame(n) { for (let i = 0; i < (n || 1); i++) frame(0.05); }, render() { frame(0.016); }, focus: focusTarget,
+      gfx: () => ({ tier: T.id, passes: pipe.passes.slice(), ms: S.ms || 0, contact: !!cs, shadow: renderer.shadowMap.enabled, dpr: renderer.getPixelRatio(), sparks: fx.count() }), stats: () => GFX.pixelStats(renderer), setTier(id) { GFX.setSetting(id); } },
+    dispose() { this.pause(); offGfx(); if (ro) ro.disconnect(); fx.dispose(); if (cs) cs.dispose(); pipe.dispose(); GFX.disposeEnv(renderer); renderer.dispose(); }
   };
 }

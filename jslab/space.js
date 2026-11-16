@@ -1,9 +1,10 @@
 // Braccio Lab · Il mio spazio: laboratorio 3D personalizzabile con banco metalli e morsa, smerigliatrice,
 // trapano a colonna, saldatura TIG/MIG manuale, mini tornio 180×300 e rastrelliera dei metalli. Usa window.MET.
 import * as THREE from "../vendor/three.module.min.js";
-import { OrbitControls } from "../vendor/three-addons.min.js";
-import * as TX from "../js3d/textures.js?v=5";
-import { mats } from "../js3d/armview.js?v=5";
+import { OrbitControls } from "../vendor/three-fx.min.js";
+import * as GFX from "../js3d/gfx.js?v=6";
+import * as TX from "../js3d/textures.js?v=6";
+import { mats } from "../js3d/armview.js?v=6";
 
 const SKEY = "xentriq-braccio-lab-space-v1";
 const FLOORS = { cemento: "Cemento industriale", resina: "Resina epossidica grigia", legno: "Parquet di rovere", piastrelle: "Piastrelle da officina" };
@@ -49,19 +50,27 @@ export function mountSpace(el, env) {
     <div class="sp-hint" id="spHint"></div></div>
     <div class="sp-panel card" id="spPanel"></div></div>`;
   const $ = s => el.querySelector(s), canvas = $("#spCv"), stage = $("#spStage");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: test, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, test ? 1 : 1.5)); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = !test; renderer.shadowMap.type = THREE.PCFShadowMap;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x15181c); scene.fog = new THREE.Fog(0x15181c, 12, 26);
+  let T = GFX.tier();
+  const renderer = GFX.makeRenderer(canvas, { test, tier: T });
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x15181c); scene.fog = new THREE.Fog(0x15181c, 12, 26); scene.environment = GFX.envMap(renderer, "workshop"); scene.environmentIntensity = 0.55;
   const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 60); camera.position.set(4.5, 4.2, 6.2);
   const controls = new OrbitControls(camera, canvas); controls.enableDamping = !rm; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 0.18; controls.maxDistance = 14; controls.target.set(0, 0.8, 0);
   const M = mats();
-  const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x2a2622, 0.9); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff2e0, 1.6); sun.position.set(3, 6, 2.5); sun.castShadow = !test; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 20 }); scene.add(sun);
+  const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x2a2622, 0.45); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff2e0, 1.6); sun.position.set(3, 6, 2.5); scene.add(sun);
+  let pipe = null, cs = null;
+  function setupTier() { GFX.setupShadow(sun, T, 6, { far: 20, near: 0.5, bias: -0.0005, normalBias: 0.03 }); if (pipe) pipe.setTier(T); else pipe = new GFX.Pipeline(renderer, scene, camera, { tier: T, test, ao: { radius: 0.25, distanceFallOff: 1, thickness: 1 }, bloom: [0.45, 0.45, 4], dof: true, focus: 6, aperture: 0.0015, maxblur: 0.005 }); if (cs) cs.dispose(); cs = T.contact ? new GFX.ContactShadow(renderer, scene, { w: 8, d: 6.4, y: 0.002, res: T.csRes, far: 1.2, blur: 2.5, opacity: 0.75, every: 4 }) : null; }
+  setupTier();
+  const gov = new GFX.Governor(n => { env.toast && env.toast("Grafica ridotta a " + GFX.TIERS[n].n + " per restare fluida"); });
+  const offGfx = GFX.onChange(id => { T = GFX.TIERS[id]; setupTier(); const q = el.querySelector("#spQ"); if (q) q.value = GFX.setting(); });
+  { const tp = el.querySelector(".sp-top"); if (tp) tp.insertAdjacentHTML("beforeend", GFX.selectHtml("spQ", "gfx-q")); }
+  el.addEventListener("change", e => { const t = e.target; if (t.getAttribute && t.getAttribute("data-gfx") === "q") GFX.setSetting(t.value); });
+  const fx = new GFX.Sparks(Math.round(1200 * T.parts), { size: 0.01, streak: 0.03, floor: 0, bounce: 0.35 }); scene.add(fx.obj); let haze = 0; const hazeP = new THREE.Vector3();
+  function hot(p, d, n, v, temp) { fx.emit([p.x, p.y, p.z], d, 0.6, v, Math.max(1, Math.round(n * T.parts)), 0.7, temp); haze = 0.4; hazeP.copy(p); }
   [[-2, -1], [2, -1], [0, 1.5]].forEach(([x, z]) => { const l = new THREE.PointLight(0xfff5e6, 6, 7, 1.6); l.position.set(x, 3, z); scene.add(l); const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.16), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4e0, emissiveIntensity: 2 })); lamp.position.set(x, 3.15, z); scene.add(lamp); });
   // stanza
   const RW = 8, RD = 6.4, RH = 3.2;
-  const floorMat = new THREE.MeshStandardMaterial({ map: floorTex(S.floor), roughness: S.floor === "resina" ? 0.35 : 0.85, metalness: 0 });
+  const fN = GFX.texSet("worn", T, [4, 3.2]); const floorMat = new THREE.MeshStandardMaterial({ map: floorTex(S.floor), normalMap: T.detail ? fN.normal || null : null, normalScale: new THREE.Vector2(0.4, 0.4), roughness: S.floor === "resina" ? 0.35 : 0.85, metalness: 0 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTex(S.wall), roughness: 0.92 });
   [[0, RH / 2, -RD / 2, 0, RW], [-RW / 2, RH / 2, 0, Math.PI / 2, RD], [RW / 2, RH / 2, 0, -Math.PI / 2, RD]].forEach(([x, y, z, ry, w]) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, RH), wallMat); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; scene.add(m); });
@@ -81,7 +90,7 @@ export function mountSpace(el, env) {
       const pcb = box(0.22, 0.004, 0.15, new THREE.MeshStandardMaterial({ color: 0x1f7a3a, roughness: 0.45 }), 0.05, 0.927, 0.05, g); for (let i = 0; i < 6; i++) box(0.02, 0.012, 0.008, i % 2 ? M.ceramic : dark, -0.03 + i * 0.03, 0.935, 0.04, g);
       box(0.08, 0.15, 0.035, new THREE.MeshStandardMaterial({ color: 0xf5c542, roughness: 0.5 }), 0.45, 0.93, 0.1, g).rotation.x = -1.2;
       const arm = cyl(0.01, 0.01, 0.5, grey, 0.6, 1.15, -0.2, g); arm.rotation.z = 0.4; cyl(0.09, 0.09, 0.02, new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.8, roughness: 0.05, thickness: 0.01 }), 0.48, 1.38, -0.15, g); },
-    metal(g) { bench(g, 1.8, 0.8, 0.9, grey, dark); box(1.8, 0.06, 0.8, new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.6, metalness: 0.7 }), 0, 0.93, 0, g);
+    metal(g) { bench(g, 1.8, 0.8, 0.9, grey, dark); box(1.8, 0.06, 0.8, new THREE.MeshStandardMaterial({ color: 0x5a6068, roughness: 1, metalness: 0.75, roughnessMap: GFX.texSet("worn", T, [2, 1]).rough }), 0, 0.93, 0, g);
       const vise = new THREE.Group(); vise.position.set(-0.45, 0.96, 0.12); g.add(vise); box(0.22, 0.08, 0.16, M.paint, 0, 0.04, 0, vise); box(0.2, 0.08, 0.04, grey, 0, 0.12, -0.04, vise); const jaw = box(0.2, 0.08, 0.04, grey, 0, 0.12, 0.05, vise); cyl(0.008, 0.008, 0.3, M.steel, 0, 0.1, 0.22, vise).rotation.x = Math.PI / 2;
       R.bar = cyl(0.012, 0.012, 0.6, metalMat(S.metal), 0.15, 0.13, 0.005, vise); R.bar.rotation.z = Math.PI / 2; R.barLen = 0.6; R.vise = vise;
       const gr = new THREE.Group(); gr.position.set(-0.05, 1.18, 0.12); g.add(gr); const body = cyl(0.035, 0.035, 0.28, new THREE.MeshStandardMaterial({ color: 0x1f5fb0, roughness: 0.45, metalness: 0.2 }), 0, 0.1, 0.0, gr); body.rotation.z = Math.PI / 2; body.position.set(0.16, 0.08, 0);
@@ -162,7 +171,7 @@ export function mountSpace(el, env) {
     const tgt = R.gr0.clone(); tgt.y -= 0.06; R.grinder.position.lerp(tgt, Math.min(1, dt * 5));
     GR.prog += dt * (GR.mode === "cut" ? 0.35 : 0.6) * 200 / (m.HB + 60) * (GR.disc === "cut1" ? 1.2 : 1);
     const g = groups.metal, cp = g.localToWorld(V3(-0.05, 1.11, 0.12));
-    if (res.spark > 0) for (let n = 0; n < 6 * res.spark; n++) spawn(cp, V3(0.4 + Math.random() * 1.2, 0.2 + Math.random() * 1.0, (Math.random() - 0.5) * 0.8).applyAxisAngle(V3(0, 1, 0), g.rotation.y), res.sparkCol, 0.6 + Math.random() * 0.5, 4);
+    if (res.spark > 0 && T.post) { const dv = V3(1, 0.5, 0).applyAxisAngle(V3(0, 1, 0), g.rotation.y); hot(cp, [dv.x, dv.y, dv.z], 6 * res.spark, 2.4, 1); } else if (res.spark > 0) for (let n = 0; n < 6 * res.spark; n++) spawn(cp, V3(0.4 + Math.random() * 1.2, 0.2 + Math.random() * 1.0, (Math.random() - 0.5) * 0.8).applyAxisAngle(V3(0, 1, 0), g.rotation.y), res.sparkCol, 0.6 + Math.random() * 0.5, 4);
     else if (Math.random() < 0.5) spawn(cp, V3(Math.random() * 0.3, 0.1, (Math.random() - 0.5) * 0.3), "#cfd4d8", 0.6, 9.8);
     if (GR.prog >= 1) { GR.prog = 0; GR.hold = false; if (GR.mode === "cut") { R.barLen = Math.max(0.15, R.barLen - 0.08); R.bar.scale.y = R.barLen / 0.6; R.bar.position.x = 0.15 - (0.6 - R.barLen) / 2; } S.last = (GR.mode === "cut" ? "Taglio completato" : "Sbavatura completata") + " su " + m.n + " · velocità periferica " + res.v.toFixed(0) + " m/s" + (res.spark ? " · scintille " + (m.id === "ti5" ? "bianche abbaglianti (titanio)" : m.id === "ghisa" ? "rosse corte (ghisa)" : "arancioni lunghe") : " · niente scintille: metallo non ferroso"); panel(); }
   }
@@ -199,7 +208,7 @@ export function mountSpace(el, env) {
     WD.lastX = lp.x; WD.lastT = now;
     const vAvg = WD.vs.length ? WD.vs.reduce((a, b) => a + b, 0) / WD.vs.length : 0, s = MET.weldSetup(WD.proc, S.metal, WD.t), b = MET.bead({ proc: WD.proc, metal: S.metal, t: WD.t, v: Math.max(1, vAvg), stick: WD.stick });
     const n = R.bead.count; if (n < 500 && (n === 0 || Math.abs(lp.x - (WD.bx || 0)) > 0.0025)) { WD.bx = lp.x; const w = Math.max(1.5, Math.min(12, b.width * Math.sqrt(WD.I / s.I))) / 1000; ts.set(w * 0.6, w * 0.32, w * 0.5); tp.set(lp.x, 0.859 + w * 0.12, 0); mtx.compose(tp, tq, ts); R.bead.setMatrixAt(n, mtx); R.beadHeat[n] = 1; R.bead.count = n + 1; R.bead.instanceMatrix.needsUpdate = true; }
-    if (WD.proc === "mig") for (let k = 0; k < 2; k++) spawn(g.localToWorld(V3(lp.x, 0.862, lp.z)), V3((Math.random() - 0.5) * 0.8, 0.3 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8), "#ffcf7a", 0.35, 9.8);
+    if (WD.proc === "mig" && T.post) hot(g.localToWorld(V3(lp.x, 0.862, lp.z)), [0, 1, 0], 2, 1.4, 1); else if (WD.proc === "mig") for (let k = 0; k < 2; k++) spawn(g.localToWorld(V3(lp.x, 0.862, lp.z)), V3((Math.random() - 0.5) * 0.8, 0.3 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8), "#ffcf7a", 0.35, 9.8);
   }
   function weldEnd() {
     if (!WD.arc && !WD.path.length) return; WD.arc = false; R.arc.intensity = 0; WD.lastX = null;
@@ -316,24 +325,26 @@ export function mountSpace(el, env) {
     panel(); });
   el.addEventListener("input", e => { const t = e.target, k = t.getAttribute("data-in"); if (k === "lrpm") { LT.rpm = +t.value; t.previousElementSibling.querySelector("b").textContent = LT.rpm; } else if (k === "wI") { WD.I = +t.value; t.previousElementSibling.querySelector("b").textContent = WD.I + " A"; } else if (k === "wst") { WD.stick = +t.value; t.previousElementSibling.querySelector("b").textContent = WD.stick + " mm"; R.torch.position.y = 0.859 + WD.stick / 1000; } });
   /* ---- ciclo ---- */
-  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  function resize() { const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); camera.aspect = w / h; camera.updateProjectionMatrix(); pipe.setSize(w, h); }
   const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null; if (ro) ro.observe(stage);
   let raf = 0, last = 0;
   function frame(dt) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.9); const e = fly.t < 0.5 ? 2 * fly.t * fly.t : 1 - Math.pow(-2 * fly.t + 2, 2) / 2; camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e); if (fly.t >= 1) fly = null; }
     controls.update(); grindStep(dt); drillStep(dt); sawStep(dt); latheStep(dt); stepP(dt);
-    if (WD.arc) R.arc.intensity = 3 + Math.random() * (rm ? 0 : 3);
+    if (WD.arc) { R.arc.intensity = 3 + Math.random() * (rm ? 0 : 3); haze = Math.max(haze, 0.3); R.arc.getWorldPosition(hazeP); }
+    fx.update(dt); haze = Math.max(0, haze - dt);
     for (let i = 0; i < R.bead.count; i++) if (R.beadHeat[i] > 0) { R.beadHeat[i] = Math.max(0, R.beadHeat[i] - dt * 0.5); const h = R.beadHeat[i], c = tmpC.set(MET.get(S.metal).col); c.lerp(new THREE.Color(1.0, 0.55, 0.15), h * h); if (/aisi/.test(S.metal) && h < 0.5 && h > 0.1) c.lerp(new THREE.Color(0.75, 0.6, 0.3), 0.4); R.bead.setColorAt(i, c); R.bead.instanceColor.needsUpdate = true; }
     ["grind", "drill", "saw"].forEach(k => { const bar = el.querySelector(`[data-prog="${k}"]`); if (bar) bar.style.width = Math.round(Math.min(1, (k === "grind" ? GR : k === "drill" ? DR : SW).prog) * 100) + "%"; });
-    renderer.render(scene, camera);
+    pipe.setHaze(haze > 0 ? hazeP : null, haze * 2.2, 0.18); if (cs) cs.update(); pipe.setFocus(camera.position.distanceTo(controls.target)); const t0 = performance.now(); pipe.render(dt); S.ms = performance.now() - t0;
   }
-  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; frame(dt); raf = requestAnimationFrame(tick); }
+  function tick(ts) { raf = 0; if (!S.run) return; const dt = Math.min(0.05, (ts - (last || ts)) / 1000); last = ts; gov.tick(dt); frame(dt); raf = requestAnimationFrame(tick); }
   latheStock(25); weldSet(); resize(); overview(); hint();
   return {
     resume() { S.run = true; resize(); last = 0; if (!raf) raf = requestAnimationFrame(tick); },
     pause() { S.run = false; if (raf) cancelAnimationFrame(raf); raf = 0; },
     ctx() { const st = S.station, names = { grind: "smerigliatrice", drill: "trapano a colonna", lathe: "mini tornio", weld: "saldatura " + WD.proc.toUpperCase(), saw: "sega a nastro", rack: "rastrelliera metalli", tools: "parete attrezzi", elec: "banco elettronica" }; const tip = st === "lathe" ? "giri ideali " + Math.round(MET.lathe({ metal: S.metal, D: Math.max(...LT.r) * 2000, tool: LT.tool }).n) + " giri/min" : st === "drill" ? "giri ideali " + Math.round(MET.drill({ metal: S.metal, d: DR.d }).n) + " giri/min" : st === "weld" ? "consigliati " + MET.weldSetup(WD.proc, S.metal, WD.t).I + " A, " + MET.weldSetup(WD.proc, S.metal, WD.t).v + " mm/min" : ""; return { station: st ? names[st] : null, metal: MET.get(S.metal).n, last: S.last, warn: S.warn, tip, parts: S.parts.length }; },
-    test: { go, setMetal, S, LT, WD, GR, DR, SW, sawPart, latheStart, frame, weldEnd, weldPath(vs) { WD.path = vs.slice(); WD.arc = true; weldEnd(); }, spindle(v) { LT.on = v; }, renderNow() { frame(0.016); }, hold: holdOn },
-    dispose() { this.pause(); if (ro) ro.disconnect(); renderer.dispose(); }
+    test: { go, setMetal, S, LT, WD, GR, DR, SW, sawPart, latheStart, frame, weldEnd, weldPath(vs) { WD.path = vs.slice(); WD.arc = true; weldEnd(); }, spindle(v) { LT.on = v; }, renderNow() { frame(0.016); }, hold: holdOn,
+      gfx: () => ({ tier: T.id, passes: pipe.passes.slice(), ms: S.ms || 0, contact: !!cs, shadow: renderer.shadowMap.enabled, dpr: renderer.getPixelRatio(), sparks: fx.count() }), stats: () => GFX.pixelStats(renderer), setTier(id) { GFX.setSetting(id); } },
+    dispose() { this.pause(); offGfx(); if (ro) ro.disconnect(); fx.dispose(); if (cs) cs.dispose(); pipe.dispose(); GFX.disposeEnv(renderer); renderer.dispose(); }
   };
 }
