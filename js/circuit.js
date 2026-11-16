@@ -384,7 +384,7 @@
         else if (c.t === "MOTOR") { var d = DCMOT[c.p.kind] || DCMOT.tt, K = motK(d), Dd = K.b + K.kt * K.ke / d.R, J = 0.05 * Dd, Tm = K.kt * m.I - K.b * s.w, fr = c.p.TL;
           if (Math.abs(s.w) < 1e-6 && Math.abs(Tm) <= fr) s.w = 0; else { s.w += dt * (Tm - fr * (s.w >= 0 ? 1 : -1)) / J; } }
       });
-      if (k % every === 0 || k === steps) { T.push(tr.t); probes.forEach(function (pr) { S[pr].push(vOf(r.x, P.map[pr] || 0)); }); cur.forEach(function (id) { S["I:" + id].push(ms[id] ? ms[id].I : 0); }); }
+      if (k % every === 0 || k === steps) { T.push(tr.t); probes.forEach(function (pr) { S[pr].push(vOf(r.x, P.map[pr] || 0)); }); cur.forEach(function (id) { S["I:" + id].push(ms[id] ? ms[id].I : 0); }); if (opt.full) (S._ms = S._ms || []).push(ms); }
       last = ms;
     }
     return { ok: true, t: T, s: S, comps: last, st: st };

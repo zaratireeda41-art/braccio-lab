@@ -38,7 +38,20 @@
     return best;
   }
   /* --- calcolatori in linguaggio naturale --- */
+  // coppie di serraggio VDI 2230 (μ ≈ 0,12, viti zincate/brunite non lubrificate) – stessi valori della Dispensa
+  var MA = { M3: [1.1, 1.6, 1.9], M4: [2.6, 3.9, 4.5], M5: [5.2, 7.6, 8.9], M6: [9, 13.2, 15.4], M8: [21.6, 31.8, 37.2], M10: [43, 63, 73], M12: [73, 108, 126], M16: [180, 264, 309] };
+  var CATx = isNode ? (function () { try { return require("./catalog.js"); } catch (e) { return null; } })() : root.CAT;
+  function boltMA(size, ci) { if (CATx && CATx.BOLTS) { var b = CATx.BOLTS.filter(function (x) { return x.s === size; })[0]; if (b) return { MA: b.MA[ci], FM: b.FM[ci], hex: b.hex, tap: b.tap }; } var m = MA[size]; return m ? { MA: m[ci], FM: null, hex: null, tap: null } : null; }
   var CALCS = [
+    { id: "bolt", re: /\b(coppia|serraggio|serrare|stringere|dinamometric\w*)\b.*\bm(3|4|5|6|8|10|12|16)\b|\bm(3|4|5|6|8|10|12|16)\b.*\b(coppia|serraggio|serrare|stringere|dinamometric\w*)\b/, run: function (q) {
+      var n = norm(q), m = /\bm(3|4|5|6|8|10|12|16)\b/.exec(n), size = "M" + m[1], ci = /12[.,]9/.test(n) ? 2 : /10[.,]9/.test(n) ? 1 : 0, cls = ["8.8", "10.9", "12.9"][ci], d = boltMA(size, ci); if (!d) return "Non conosco la vite " + size + ".";
+      return "**Vite " + size + " classe " + cls + "**: coppia di serraggio ≈ **" + fx(d.MA, 1) + " N·m**" + (d.FM ? " (precarico ≈ " + fx(d.FM, 1) + " kN, attrito μ ≈ 0,12)" : "") + "." + (d.hex ? " Testa cilindrica TCEI (ISO 4762): brugola **" + fx(d.hex, 1) + " mm**." : "") + (d.tap ? " Foro da filettare: punta Ø" + fx(d.tap, 1) + " mm." : "") + " Serra con una chiave dinamometrica il cui campo contenga il valore nel 20–100%, in croce e in due passate (50% poi 100%). Oltre ≈ 135% la vite si snerva e va buttata; sotto ≈ 60% si allenta con le vibrazioni.";
+    } },
+    { id: "trace", re: /\b(larghezza|largh|pista|piste)\b.*\b(\d+[.,]?\d*)\s*a\b|\b(\d+[.,]?\d*)\s*a\b.*\b(pista|piste)\b/, run: function (q, ns) {
+      var n = norm(q), mI = /(\d+(?:[.,]\d+)?)\s*a\b/.exec(n), I = mI ? parseFloat(mI[1].replace(",", ".")) : 1, oz = /2 ?oz/.test(n) ? 2 : 1, dT = 10, inner = /intern/.test(n), k = inner ? 0.024 : 0.048;
+      var A = Math.pow(I / (k * Math.pow(dT, 0.44)), 1 / 0.725), w = A / (1.378 * oz) * 0.0254;
+      return "**Larghezza pista per " + fx(I, 1) + " A** (IPC-2221, rame " + oz + " oz, strato " + (inner ? "interno" : "esterno") + ", ΔT 10 °C): sezione " + fx(A, 0) + " mil² → **" + fx(w, 2) + " mm**. Arrotonda per eccesso e aggiungi vie in parallelo se cambi strato; con ΔT 20 °C la pista può essere ≈ 25% più stretta.";
+    } },
     { id: "led", re: /\b(resisten\w*|ohm)\b.*\bled\b|\bled\b.*\b(resisten\w*)\b/, run: function (q, ns) {
       var V = pick(ns, "v"), I = pick(ns, "a"), n = norm(q), col = null;
       for (var c in CIR.LED_COL) if (n.indexOf(norm(c)) >= 0) col = c;
@@ -157,6 +170,20 @@
     ["pwm", "pwm duty cycle modulazione velocita luminosita", "Il **PWM** accende e spegne velocemente un'uscita: il valore medio è V × duty. Arduino: analogWrite(pin, 0–255) a circa 490 Hz; per motori meglio 20 kHz (silenziosi)."],
     ["ohmlegge", "legge di ohm tensione corrente resistenza formula", "**Legge di Ohm**: V = R·I. Potenza: P = V·I = R·I² = V²/R. Esempio: 12 V su 220 Ω → 54,5 mA e 0,65 W (serve una resistenza da 1 W)."],
     ["kirchhoff", "kirchhoff nodi maglie serie parallelo", "**Serie**: stessa corrente, le resistenze si sommano. **Parallelo**: stessa tensione, 1/R = 1/R1 + 1/R2. Kirchhoff: in un nodo la somma delle correnti entranti è uguale a quella delle uscenti; in una maglia la somma delle tensioni è zero."],
+    ["phpz", "ph pz phillips pozidriv croce differenza cacciavite impronta", "**Phillips (PH)** e **Pozidriv (PZ)** sembrano uguali ma non lo sono: la PH ha ali coniche e il cacciavite tende a uscire (cam-out) – spingi forte; la PZ ha le ali parallele e 4 tacche sottili a 45° sulla testa della vite. Un PH in una vite PZ (o viceversa) tocca solo in punta: spana l'impronta. Usa sempre la misura giusta: PH2/PZ2 per viti M4–M5."],
+    ["torx", "torx tx stella esalobata t20 t25 t30", "Il **Torx (TX)** ha 6 lobi: trasmette più coppia senza uscire e si usa su viti per elettronica, auto e macchine. Misure tipiche: TX20 per M4, TX25 per M5, TX30 per M6, TX40 per M8. Un TX troppo piccolo gira a vuoto e arrotonda i lobi."],
+    ["brugola", "brugola esagono incassato tcei chiave a l 2.5 3 4 5 6 8", "La **brugola** (esagono incassato) delle viti TCEI ISO 4762: M3 → 2,5 mm, M4 → 3, M5 → 4, M6 → 5, M8 → 6, M10 → 8, M12 → 10. Infilala fino in fondo e mai una brugola in pollici in una vite metrica: gioca e spana la sede."],
+    ["dinamometrica", "chiave dinamometrica coppia serraggio clic campo taratura", "La **chiave dinamometrica** a scatto si regola sulla scala e fa \"clic\" alla coppia impostata: fermati al primo clic. Scegli quella il cui campo contiene il valore nel 20–100% (precisione ±4% secondo ISO 6789), riportala al minimo dopo l'uso e non usarla per svitare."],
+    ["preforo", "preforo foro filettare maschio punta m6 m8 m5 filettatura", "**Fori da filettare** (passo grosso): M3 → Ø2,5, M4 → Ø3,3, M5 → Ø4,2, M6 → Ø5, M8 → Ø6,8, M10 → Ø8,5, M12 → Ø10,2. Maschio dritto, olio da taglio, mezzo giro avanti e un quarto indietro per rompere il truciolo."],
+    ["seghetto", "seghetto sega ferro lama tpi denti tubo lamiera", "**Seghetto**: almeno 3 denti sempre in presa. Lame da 18 TPI per pieno e spessori grossi, 24 TPI per tubi e profilati, 32 TPI per lamiere e tubi sottili. I denti guardano avanti: si taglia spingendo, con colpi lunghi e lenti (≈ 1 al secondo)."],
+    ["calibro", "calibro micrometro misurare precisione nonio centesimi", "**Calibro**: risoluzione 0,02–0,01 mm, per misure generali. **Micrometro**: 0,001–0,01 mm, per alberi e sedi di cuscinetti (tolleranze h6/k6). Misura a pezzo freddo, con la frizione del micrometro e senza forzare."],
+    ["comparatore", "comparatore eccentricita runout centratura albero", "Il **comparatore** misura spostamenti (0,01 mm): su base magnetica, con il tastatore perpendicolare e un po' di precarico. Ruotando l'albero leggi l'eccentricità (TIR = massimo − minimo)."],
+    ["montaggio", "area assemblaggio montaggio braccio monta slot link flangia", "Nell'**Area di assemblaggio** monti in ordine: basamento (4 viti M10 sul tavolo), giunti (motore + riduttore), link (barre tagliate nel Mio spazio o a magazzino), pinza e controllore. Ogni fissaggio va **serrato** con l'utensile e la coppia giusti, poi **cablaggio** (motore → suo driver, driver → alimentazione giusta, segnale dal controllore) e **E-stop**. Infine la verifica fisica e la simulazione."],
+    ["baricentro", "baricentro centro di massa ribaltamento momento base", "Il **baricentro** del braccio teso si sposta lontano dalla base: il momento ribaltante M = Σ m·g·d deve essere minore di quello che resiste (precarico delle viti del basamento × braccio + peso). Link leggeri, motori vicino alla base e un basamento largo e ben serrato tengono il braccio a terra."],
+    ["inerzia", "inerzia momento d inerzia accelerazione rampa coppia dinamica", "La coppia di un giunto è **gravità + inerzia**: T = Σ m·g·d + I·α, con I = Σ m·r² (+ m·L²/12 per ogni link). Accelerazioni brusche (rampa corta) moltiplicano la coppia: allunga la rampa o alleggerisci la punta prima di cambiare motore."],
+    ["flessione", "flessione cedimento rigidezza link sezione deflessione punta", "Il **cedimento in punta** somma la flessione dei link (δ = F·L³ / 3EI) e la torsione dei riduttori. Raddoppiare l'altezza della sezione rende il link circa 8 volte più rigido; l'alluminio è 3 volte meno rigido dell'acciaio a parità di sezione."],
+    ["cablaggio", "cablaggio cavo motore driver segnale alimentazione step dir", "**Cablaggio**: ogni motore va all'uscita del **suo** driver (cavi incrociati = un asse muove l'altro), i driver DC dall'alimentatore nel loro campo di tensione, gli azionamenti AC dalla rete 230 V con magnetotermico, il segnale (STEP/DIR, PWM, CAN, EtherCAT) dal controllore e la massa in comune. Mai prendere la potenza dai 5 V della logica."],
+    ["estop", "emergenza e-stop fungo arresto sto relè sicurezza", "L'**arresto di emergenza** (EN ISO 13850) deve togliere energia ai motori: pulsante a fungo → relè di sicurezza → ingresso STO/ENABLE dei driver (categoria 0 o 1). Un E-stop solo software non basta."],
     ["privacy", "chiave api openai llm online intelligenza artificiale esterna privacy", "Questo assistente funziona **offline**: risponde con la sua base di conoscenza e i calcolatori, senza inviare dati. Se vuoi, nelle impostazioni puoi collegare un servizio esterno compatibile OpenAI incollando la TUA chiave: resta solo in questo browser (localStorage), ma chi usa questo dispositivo può leggerla. Di default è spento."]
   ];
   var IDX = KB.map(function (e) { var ks = toks(e[1]); return { id: e[0], keys: ks, stems: ks.map(stem), a: e[2], title: e[2].replace(/\*\*/g, "").split(/[.:]/)[0].slice(0, 60) }; });
@@ -196,6 +223,19 @@
     if (sp && (ctx.view === "space" || /stazione|spazio|banco metalli/.test(n)) && (wantErr || /qui|stazione|ora|adesso|cosa (devo|posso)/.test(n))) {
       return "Sei in **Il mio spazio**" + (sp.station ? ", stazione **" + sp.station + "**" : "") + (sp.metal ? ", metallo **" + sp.metal + "**" : "") + "." + (sp.last ? "\nUltimo risultato: " + sp.last : "") + (sp.warn && sp.warn.length ? "\n⚠️ " + sp.warn.join("\n⚠️ ") : "") + (sp.tip ? "\nSuggerimento: " + sp.tip : "");
     }
+    var p3 = ctx.pcb3d, tl = ctx.tools, as = ctx.asm;
+    if (p3 && ctx.view === "pcb3d" && !p3.empty && (wantErr || /vedo|termic|calore|scheda|pista|via|strat|giunt|corrente|flusso|tempo/.test(n))) {
+      return "**Scheda 3D**: " + p3.board + ", " + p3.size + (p3.vias ? ", " + p3.vias + " vie" : "") + (p3.bottom ? ", " + p3.bottom + " piste sullo strato inferiore" : "") + ". Vista: " + ({ normal: "normale", flow: "flusso di corrente", heat: "termica" }[p3.mode] || p3.mode) + (p3.hot ? ", componente più caldo " + p3.hot : "") + "." + (p3.drc && p3.drc.length ? "\n⚠️ " + p3.drc.join("\n⚠️ ") : "") + "\nNella vista termica i colori vanno dal blu (25 °C) al rosso: le piste si scaldano con R·I², i componenti con la loro potenza. Le piste che si incrociano passano sotto con una via.";
+    }
+    if (tl && ctx.view === "tools" && (wantErr || /utensil|uso|qui|cacciavit|chiave|coppia|vite|successo/.test(n)) && !/\bm(3|4|5|6|8|10|12|16)\b/.test(n)) {
+      return "Al **Tavolo utensili** hai in mano: **" + tl.tool + "** sul pezzo **" + tl.target + "**." + (tl.last ? "\nUltimo esito: " + (tl.last.sev === "ok" ? "✅ " : tl.last.sev === "warn" ? "⚠️ " : "⛔ ") + "**" + tl.last.t + "**" + (tl.last.why ? "\nPerché: " + tl.last.why : "") + (tl.last.fix ? "\nCome si fa bene: " + tl.last.fix : "") : "\nScegli inserto/misura e coppia e premi Usa: ti dico se è l'utensile giusto.") + "\nEsiti finora: ✅ " + tl.stats.ok + " · ⚠️ " + tl.stats.warn + " · ⛔ " + tl.stats.err + (tl.damaged ? " · pezzi rovinati: " + tl.damaged : "");
+    }
+    if (as && ctx.view === "asm" && (wantErr || /manca|montaggio|braccio|sovraccaric|cablaggio|serrag|simulaz|pronto|giunto/.test(n)) && !/\bm(3|4|5|6|8|10|12|16)\b/.test(n)) {
+      var head2 = "**Area di assemblaggio** (" + as.axes + " assi): montati " + as.mounted + ", fissaggi serrati bene " + as.tight + ", giunti cablati " + as.wired + "/" + as.axes + ". Massa " + fx(as.mass, 2) + " kg, cedimento in punta " + fx(as.defl, 2) + " mm.";
+      var sm = as.sim && as.sim.events && as.sim.events.length ? "\nDalla simulazione:\n" + as.sim.events.slice(0, 4).map(function (e) { return (e.sev === "err" ? "⛔ " : "⚠️ ") + fx(e.time, 1) + " s · **" + e.t + "**" + (e.fix ? " → " + e.fix : ""); }).join("\n") : as.sim ? "\nSimulazione: ✅ ciclo completato (coppia max " + Math.round(as.sim.peakUtil * 100) + "%, motore più caldo " + Math.round(as.sim.peakTemp) + " °C)." : "";
+      var jt = as.J && as.J.length ? "\nCoppie: " + as.J.map(function (j) { return j.tag + " " + fx(j.treq, 1) + "/" + fx(j.tavail, 1) + " N·m"; }).join(" · ") : "";
+      return head2 + (as.issues.length ? "\nDa sistemare (" + as.errors + " errori, " + as.warns + " avvisi):\n" + issuesText(as.issues, 5) : "\n✅ Nessun problema statico.") + jt + sm;
+    }
     if (ctx.arm && /mio braccio|progetto|giunt|riduttor|cuscinett/.test(n) && wantErr !== null) {
       var a = ctx.arm; if (a.summary) return "Sul tuo braccio: " + a.summary + (a.issues && a.issues.length ? "\nDa sistemare:\n• " + a.issues.slice(0, 5).join("\n• ") : "");
     }
@@ -220,6 +260,9 @@
     if (ctx.view) s.push("Vista: " + ctx.view);
     if (ctx.circuit && ctx.circuit.count) s.push("Circuito: " + ctx.circuit.count + " componenti. " + (ctx.circuit.summary || "") + " Errori: " + (ctx.circuit.issues || []).map(function (i) { return i.t; }).join("; "));
     if (ctx.space) s.push("Spazio: stazione " + (ctx.space.station || "-") + ", metallo " + (ctx.space.metal || "-") + ". " + (ctx.space.last || ""));
+    if (ctx.pcb3d && !ctx.pcb3d.empty) s.push("PCB 3D: " + ctx.pcb3d.board + " " + ctx.pcb3d.size + ", vista " + ctx.pcb3d.mode + (ctx.pcb3d.hot ? ", più caldo " + ctx.pcb3d.hot : ""));
+    if (ctx.tools) s.push("Tavolo utensili: " + ctx.tools.tool + " su " + ctx.tools.target + (ctx.tools.last ? " → " + ctx.tools.last.t : ""));
+    if (ctx.asm) s.push("Assemblaggio: " + ctx.asm.axes + " assi, montati " + ctx.asm.mounted + ", " + ctx.asm.errors + " errori: " + (ctx.asm.issues || []).map(function (i) { return i.t; }).join("; ") + (ctx.asm.sim ? ". Simulazione: " + (ctx.asm.sim.events || []).map(function (e) { return e.t; }).join("; ") : ""));
     if (ctx.arm && ctx.arm.summary) s.push("Braccio: " + ctx.arm.summary);
     return s.join("\n");
   }
